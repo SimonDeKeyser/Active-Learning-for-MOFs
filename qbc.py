@@ -43,7 +43,7 @@ traj_dir = '/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/600K.xyz'
 results_dir = '/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/committee_results/test'
 
 @dataclass
-class qcb:
+class qbc:
     """
     Class containing the Query by Committee
     """
@@ -212,6 +212,6 @@ class qcb:
         plt.savefig('{}/traj_disagreement'.format(results_dir),dpi=100)
 
 if __name__ == "__main__":
-    committee = qcb(name='test', models_dir=models_dir, traj_dir=traj_dir, results_dir=results_dir, traj_index=':', n_select=100)
+    committee = qbc(name='test', models_dir=models_dir, traj_dir=traj_dir, results_dir=results_dir, traj_index=':', n_select=100)
     committee.evaluate_committee(save=True)
     committee.plot_traj_disagreement(from_results_dir=False)
