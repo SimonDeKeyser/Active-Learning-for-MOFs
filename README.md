@@ -1,0 +1,1 @@
+This repository contains the Query by Commitee active learning environment for NequIP
