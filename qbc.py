@@ -36,7 +36,7 @@ import numpy as np
 import ase.io
 import torch
 from nequip.scripts.deploy import load_deployed_model
-from nequip.data import AtomicData, AtomicDataDict
+from nequip.data import AtomicData
 
 models_dir = '/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/deployed/'
 traj_dir = '/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/300K.xyz'
@@ -53,38 +53,52 @@ class qbc:
     results_dir: str
     traj_index: str = ':'
     n_select: int = 100
-    load_mode: bool = False
+    nequip_train: bool = False
+    r_max: float = 4.5
 
     def __post_init__(self):
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         logging.info('Using {} device'.format(self.device))
         assert os.path.isdir(self.models_dir), 'The models directory does not exist'
         assert os.path.isfile(self.traj_dir), 'The trajectory file does not exist'
-        self.results_dir = os.path.mkdir(self.results_dir, self.name)
+        self.results_dir = os.path.join(self.results_dir, self.name)
         if not os.path.isdir(self.results_dir):
             os.mkdir(self.results_dir)
             logging.info('Created results directory: \n{}'.format(self.results_dir))
-        if not self.load_mode:
-            self.store_models()
-            self.load_traj()
-            self.traj_e = np.zeros(self.traj_len)
-            self.mean_e, self.sig_e = np.zeros(self.traj_len), np.zeros(self.traj_len)
-            self.mean_f_mean, self.sig_f_mean = np.zeros(self.traj_len), np.zeros(self.traj_len)
-            self.mean_f_max, self.sig_f_max = np.zeros(self.traj_len), np.zeros(self.traj_len)
-            assert self.n_select<self.traj_len, 'The wanted amount of selection datapoints exceeds the amount of total datapoints: {}>{}'.format(self.n_select, self.traj_len)
+        self.store_models()
+        self.load_traj()
+        self.traj_e = np.zeros(self.traj_len)
+        self.mean_e, self.sig_e = np.zeros(self.traj_len), np.zeros(self.traj_len)
+        self.mean_f_mean, self.sig_f_mean = np.zeros(self.traj_len), np.zeros(self.traj_len)
+        self.mean_f_max, self.sig_f_max = np.zeros(self.traj_len), np.zeros(self.traj_len)
+        assert self.n_select<self.traj_len, 'The wanted amount of selection datapoints exceeds the amount of total datapoints: {}>{}'.format(self.n_select, self.traj_len)
 
     def store_models(self):
         self.models = {}
-        model_file_names = [f for f in os.listdir(self.models_dir) if os.path.isfile(os.path.join(self.models_dir, f))]
-        for name in model_file_names:
-            if name[-4:] == '.pth':
-                path = os.path.join(self.models_dir, name)
-                model, metadata = load_deployed_model(path, self.device)
-                assert(model.__class__.__name__ == 'RecursiveScriptModule')
-                self.models[name[:-4]] = model
-        self.r_max = float(metadata['r_max'])        
-        self.models_len = len(self.models)
-        assert self.models_len >= 2, 'The amount fo models in the committee is less than 2'
+        if self.nequip_train:
+            nequip_train_list = [f for f in os.listdir(self.models_dir) if os.path.isdir(os.path.join(self.models_dir, f))]
+            model_dir_names = []
+            assert 'processed' in nequip_train_list, 'The given models directory is not a NequIP training directory'
+            logging.info('Models found in the NequIP training directory:')
+            for name in sorted(nequip_train_list):
+                if not name == 'processed':
+                    model_dir_names.append(name)
+                    logging.info('*\t{}'.format(name))
+                    path = os.path.join(self.models_dir, name, 'best_model.pth')
+                    model = torch.load(path, map_location=self.device)
+                    model = model.to(self.device)
+        else:
+            model_file_names = [f for f in os.listdir(self.models_dir) if os.path.isfile(os.path.join(self.models_dir, f))]
+            logging.info('Models found in the models directory:')
+            for name in model_file_names:
+                if name[-4:] == '.pth':
+                    logging.info('*\t{}'.format(name[-4:]))
+                    path = os.path.join(self.models_dir, name)
+                    model, _ = load_deployed_model(path, self.device)
+                    assert(model.__class__.__name__ == 'RecursiveScriptModule')
+                    self.models[name[:-4]] = model       
+            self.models_len = len(self.models)
+            assert self.models_len >= 2, 'The amount fo models in the committee is less than 2'
     
     def load_traj(self):
         logging.info('Loading data from ...: \n{}'.format(self.traj_dir))
@@ -161,6 +175,7 @@ class qbc:
     
     def load(self):
         logging.info('Loading results from ...: \n{}'.format(self.results_dir))
+        self.traj_e = np.load(os.path.join(self.results_dir, 'traj_e.npy'))
         self.mean_e = np.load(os.path.join(self.results_dir, 'mean_e.npy'))
         self.mean_f_mean = np.load(os.path.join(self.results_dir, 'mean_f_mean.npy'))    
         self.mean_f_max = np.load(os.path.join(self.results_dir, 'mean_f_max.npy'))
