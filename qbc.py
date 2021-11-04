@@ -39,8 +39,8 @@ from nequip.scripts.deploy import load_deployed_model
 from nequip.data import AtomicData, AtomicDataDict
 
 models_dir = '/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/deployed/'
-traj_dir = '/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/600K.xyz'
-results_dir = '/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/committee_results/test'
+traj_dir = '/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/300K.xyz'
+results_dir = '/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/committee_results/NVT/300K'
 
 @dataclass
 class qbc:
@@ -53,21 +53,25 @@ class qbc:
     results_dir: str
     traj_index: str = ':'
     n_select: int = 100
+    load_mode: bool = False
 
     def __post_init__(self):
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         logging.info('Using {} device'.format(self.device))
         assert os.path.isdir(self.models_dir), 'The models directory does not exist'
         assert os.path.isfile(self.traj_dir), 'The trajectory file does not exist'
+        self.results_dir = os.path.mkdir(self.results_dir, self.name)
         if not os.path.isdir(self.results_dir):
             os.mkdir(self.results_dir)
             logging.info('Created results directory: \n{}'.format(self.results_dir))
-        self.store_models()
-        self.load_traj()
-        self.mean_e, self.sig_e = np.zeros(self.traj_len), np.zeros(self.traj_len)
-        self.mean_f_mean, self.sig_f_mean = np.zeros(self.traj_len), np.zeros(self.traj_len)
-        self.mean_f_max, self.sig_f_max = np.zeros(self.traj_len), np.zeros(self.traj_len)
-        assert self.n_select<self.traj_len, 'The wanted amount of selection datapoints exceeds the amount of total datapoints: {}>{}'.format(self.n_select, self.traj_len)
+        if not self.load_mode:
+            self.store_models()
+            self.load_traj()
+            self.traj_e = np.zeros(self.traj_len)
+            self.mean_e, self.sig_e = np.zeros(self.traj_len), np.zeros(self.traj_len)
+            self.mean_f_mean, self.sig_f_mean = np.zeros(self.traj_len), np.zeros(self.traj_len)
+            self.mean_f_max, self.sig_f_max = np.zeros(self.traj_len), np.zeros(self.traj_len)
+            assert self.n_select<self.traj_len, 'The wanted amount of selection datapoints exceeds the amount of total datapoints: {}>{}'.format(self.n_select, self.traj_len)
 
     def store_models(self):
         self.models = {}
@@ -119,6 +123,7 @@ class qbc:
     def evaluate_committee(self, save=False):
         logging.info('Starting evaluation ...')
         for i in range(self.traj_len):
+            self.traj_e[i] = self.traj[i].get_total_energy()
             energies, forces = self.predict(self.traj[i])
             self.mean_e[i], self.sig_e[i] = self.disagreement(energies, 'energy')
             self.mean_f_mean[i], self.sig_f_mean[i] = self.disagreement(forces, 'forces', 'mean')
@@ -145,6 +150,7 @@ class qbc:
 
     def save(self):
         logging.info('Saving results in ...: \n{}'.format(self.results_dir))
+        np.save(os.path.join(self.results_dir, 'traj_e.npy'), self.traj_e)
         np.save(os.path.join(self.results_dir, 'mean_e.npy'), self.mean_e)
         np.save(os.path.join(self.results_dir, 'mean_f_mean.npy'), self.mean_f_mean)    
         np.save(os.path.join(self.results_dir, 'mean_f_max.npy'), self.mean_f_max)
@@ -173,7 +179,8 @@ class qbc:
         time = np.arange(self.traj_len)
 
         fig, axs = plt.subplots(4, figsize=(10,12), gridspec_kw = {'wspace':0, 'hspace':0.05})
-        axs[0].plot(time, self.mean_e, '.k', markersize=4, label='$\overline{NNPs}$')
+        axs[0].plot(time, self.traj_e, '.k',markersize=4, label='$MD NNP$')
+        axs[0].plot(time, self.mean_e, '.', color='red',markersize=4, label='$\overline{NNPs}$')
         axs[0].set_ylabel(ylabel1)
         axs[0].set_xticklabels([])
         axs[0].legend()
@@ -214,4 +221,4 @@ class qbc:
 if __name__ == "__main__":
     committee = qbc(name='test', models_dir=models_dir, traj_dir=traj_dir, results_dir=results_dir, traj_index=':', n_select=100)
     committee.evaluate_committee(save=True)
-    committee.plot_traj_disagreement(from_results_dir=False)
+    #committee.plot_traj_disagreement(from_results_dir=False)
