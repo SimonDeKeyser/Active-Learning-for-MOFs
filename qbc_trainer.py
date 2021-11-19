@@ -81,9 +81,15 @@ def make_config():
 
     config.max_epochs = max_epochs
 
-    config.save(str(cycle_dir / 'conf.yaml'),'yaml')
+    #config.save(str(cycle_dir / 'conf.yaml'),'yaml')
     return config
 
-config = make_config()
-test_file = nequip_train_dir / 'model0' / 'trainer.pth'
-restart(test_file, config)
+p = Path(nequip_train_dir).glob('**/*')
+model_files = [x for x in p if x.is_dir()]
+
+for file in sorted(model_files):
+    logging.info('\n############################################\n')
+    logging.info('Starting retraining of {}\n'.format(file.name))
+    config = make_config()
+    train_dir = file / 'trainer.pth'
+    restart(train_dir, config)
