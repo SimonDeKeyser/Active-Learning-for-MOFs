@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass
 import logging
+from pathlib import Path
 logging.basicConfig(format='',level=logging.INFO)
 
 import matplotlib.pyplot as plt
@@ -39,8 +40,8 @@ from nequip.scripts.deploy import load_deployed_model
 from nequip.data import AtomicData
 
 models_dir = '/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/deployed/'
-traj_dir = '/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/300K.xyz'
-results_dir = '/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/committee_results/NVT/300K'
+traj_dir = '/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/600K.xyz'
+results_dir = '/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/committee_results/NVT/600K'
 
 @dataclass
 class qbc:
@@ -59,11 +60,11 @@ class qbc:
     def __post_init__(self):
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         logging.info('Using {} device'.format(self.device))
-        assert os.path.isdir(self.models_dir), 'The models directory does not exist'
-        assert os.path.isfile(self.traj_dir), 'The trajectory file does not exist'
-        self.results_dir = os.path.join(self.results_dir, self.name)
-        if not os.path.isdir(self.results_dir):
-            os.mkdir(self.results_dir)
+        assert self.models_dir.is_dir(), 'The models directory does not exist'
+        assert self.traj_dir.exists(), 'The trajectory file does not exist'
+        self.results_dir = self.results_dir / self.name
+        if not self.results_dir.exists():
+            self.results_dir.mkdir()
             logging.info('Created results directory: \n{}'.format(self.results_dir))
         self.store_models()
         self.load_traj()
@@ -75,37 +76,37 @@ class qbc:
 
     def store_models(self):
         self.models = {}
+        p = Path(self.models_dir).glob('**/*')
         if self.nequip_train:
-            nequip_train_list = [f for f in os.listdir(self.models_dir) if os.path.isdir(os.path.join(self.models_dir, f))]
-            model_dir_names = []
-            assert 'processed' in nequip_train_list, 'The given models directory is not a NequIP training directory'
+            model_files = [x for x in p if x.is_dir()]
+            assert 'processed' in model_files, 'The given models directory is not a NequIP training directory'
             logging.info('Models found in the NequIP training directory:')
-            for name in sorted(nequip_train_list):
-                if not name == 'processed':
-                    model_dir_names.append(name)
-                    logging.info('*\t{}'.format(name))
-                    path = os.path.join(self.models_dir, name, 'best_model.pth')
+            for file in sorted(model_files):
+                if not file.name == 'processed':
+                    logging.info('*\t{}'.format(file.name))
+                    path = file / 'best_model.pth'
                     model = torch.load(path, map_location=self.device)
                     model = model.to(self.device)
+                    self.models[file.name] = model  
         else:
-            model_file_names = [f for f in os.listdir(self.models_dir) if os.path.isfile(os.path.join(self.models_dir, f))]
+            model_files = [x for x in p if x.is_file()]
             logging.info('Models found in the models directory:')
-            for name in model_file_names:
-                if name[-4:] == '.pth':
-                    logging.info('*\t{}'.format(name[-4:]))
-                    path = os.path.join(self.models_dir, name)
-                    model, _ = load_deployed_model(path, self.device)
+            for file in model_files:
+                if file.suffix == '.pth':
+                    logging.info('*\t{}'.format(file.name[:-4]))
+                    model, _ = load_deployed_model(file, self.device)
                     assert(model.__class__.__name__ == 'RecursiveScriptModule')
-                    self.models[name[:-4]] = model       
-            self.models_len = len(self.models)
-            assert self.models_len >= 2, 'The amount fo models in the committee is less than 2'
+                    self.models[file.name[:-4]] = model       
+        self.models_len = len(self.models)
+        assert self.models_len >= 2, 'The amount fo models in the committee is less than 2'
+        logging.info('\n')
     
     def load_traj(self):
-        logging.info('Loading data from ...: \n{}'.format(self.traj_dir))
-        assert(self.traj_dir[-4:] == '.xyz')
+        logging.info('Loading trajectory from ...: \n{}'.format(self.traj_dir))
+        assert(self.traj_dir.suffix == '.xyz')
         self.traj = ase.io.read(self.traj_dir, index=self.traj_index, format='extxyz')
         self.traj_len = len(self.traj)
-        logging.info('... Data loaded\n')
+        logging.info('... Trajectory loaded\n')
 
     def predict(self, atoms):
         data = AtomicData.from_ase(atoms=atoms, r_max=self.r_max)
@@ -137,7 +138,7 @@ class qbc:
     def evaluate_committee(self, save=False):
         logging.info('Starting evaluation ...')
         for i in range(self.traj_len):
-            self.traj_e[i] = self.traj[i].get_total_energy()
+            self.traj_e[i] = self.traj[i].get_potential_energy()
             energies, forces = self.predict(self.traj[i])
             self.mean_e[i], self.sig_e[i] = self.disagreement(energies, 'energy')
             self.mean_f_mean[i], self.sig_f_mean[i] = self.disagreement(forces, 'forces', 'mean')
@@ -158,30 +159,30 @@ class qbc:
                 disagreement = self.sig_f_max 
         assert disagreement is not None, 'No valid disagreement metric was given'
         part = np.argpartition(disagreement, -self.n_select)
-        ind = part[-self.n_select:]
-        selected_data = self.traj[ind]
+        ind = np.array(part[-self.n_select:])
+        selected_data = [self.traj[i] for i in ind]
         return selected_data
 
     def save(self):
         logging.info('Saving results in ...: \n{}'.format(self.results_dir))
-        np.save(os.path.join(self.results_dir, 'traj_e.npy'), self.traj_e)
-        np.save(os.path.join(self.results_dir, 'mean_e.npy'), self.mean_e)
-        np.save(os.path.join(self.results_dir, 'mean_f_mean.npy'), self.mean_f_mean)    
-        np.save(os.path.join(self.results_dir, 'mean_f_max.npy'), self.mean_f_max)
-        np.save(os.path.join(self.results_dir, 'sig_e.npy'), self.sig_e)
-        np.save(os.path.join(self.results_dir, 'sig_f_mean.npy'), self.sig_f_mean)    
-        np.save(os.path.join(self.results_dir, 'sig_f_max.npy'), self.sig_f_max)
+        np.save(self.results_dir / 'traj_e.npy', self.traj_e)
+        np.save(self.results_dir / 'mean_e.npy', self.mean_e)
+        np.save(self.results_dir / 'mean_f_mean.npy', self.mean_f_mean)    
+        np.save(self.results_dir / 'mean_f_max.npy', self.mean_f_max)
+        np.save(self.results_dir / 'sig_e.npy', self.sig_e)
+        np.save(self.results_dir / 'sig_f_mean.npy', self.sig_f_mean)    
+        np.save(self.results_dir / 'sig_f_max.npy', self.sig_f_max)
         logging.info('... Results saved\n')
     
     def load(self):
         logging.info('Loading results from ...: \n{}'.format(self.results_dir))
-        self.traj_e = np.load(os.path.join(self.results_dir, 'traj_e.npy'))
-        self.mean_e = np.load(os.path.join(self.results_dir, 'mean_e.npy'))
-        self.mean_f_mean = np.load(os.path.join(self.results_dir, 'mean_f_mean.npy'))    
-        self.mean_f_max = np.load(os.path.join(self.results_dir, 'mean_f_max.npy'))
-        self.sig_e = np.load(os.path.join(self.results_dir, 'sig_e.npy'))
-        self.sig_f_mean = np.load(os.path.join(self.results_dir, 'sig_f_mean.npy'))    
-        self.sig_f_max = np.load(os.path.join(self.results_dir, 'sig_f_max.npy'))
+        self.traj_e = np.load(self.results_dir / 'traj_e.npy')
+        self.mean_e = np.load(self.results_dir / 'mean_e.npy')
+        self.mean_f_mean = np.load(self.results_dir / 'mean_f_mean.npy')    
+        self.mean_f_max = np.load(self.results_dir / 'mean_f_max.npy')
+        self.sig_e = np.load(self.results_dir / 'sig_e.npy')
+        self.sig_f_mean = np.load(self.results_dir / 'sig_f_mean.npy')    
+        self.sig_f_max = np.load(self.results_dir / 'sig_f_max.npy')
         logging.info('... Results loaded\n')        
 
     def plot_traj_disagreement(self, from_results_dir=False):
@@ -194,8 +195,8 @@ class qbc:
         time = np.arange(self.traj_len)
 
         fig, axs = plt.subplots(4, figsize=(10,12), gridspec_kw = {'wspace':0, 'hspace':0.05})
-        axs[0].plot(time, self.traj_e, '.k',markersize=4, label='$MD NNP$')
-        axs[0].plot(time, self.mean_e, '.', color='red',markersize=4, label='$\overline{NNPs}$')
+        axs[0].plot(time, self.traj_e, '.r',markersize=4, label='$MD NNP$')
+        axs[0].plot(time, self.mean_e, '.k',markersize=4, label='$\overline{NNPs}$')
         axs[0].set_ylabel(ylabel1)
         axs[0].set_xticklabels([])
         axs[0].legend()
@@ -230,10 +231,10 @@ class qbc:
         axs[3].grid()
         axs[3].set_xlabel('Step')
         axs[3].legend()
-        
-        plt.savefig('{}/traj_disagreement'.format(results_dir),dpi=100)
+
+        plt.savefig('{}/traj_disagreement'.format(self.results_dir),dpi=100)
 
 if __name__ == "__main__":
     committee = qbc(name='test', models_dir=models_dir, traj_dir=traj_dir, results_dir=results_dir, traj_index=':', n_select=100)
     committee.evaluate_committee(save=True)
-    #committee.plot_traj_disagreement(from_results_dir=False)
+    committee.plot_traj_disagreement(from_results_dir=False)
