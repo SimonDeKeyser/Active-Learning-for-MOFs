@@ -79,7 +79,7 @@ class qbc:
         p = Path(self.models_dir).glob('**/*')
         if self.nequip_train:
             model_files = [x for x in p if x.is_dir()]
-            assert 'processed' in model_files, 'The given models directory is not a NequIP training directory'
+            assert 'processed' in [f.name for f in model_files], 'The given models directory is not a NequIP training directory'
             logging.info('Models found in the NequIP training directory:')
             for file in sorted(model_files):
                 if not file.name == 'processed':
