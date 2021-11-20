@@ -21,6 +21,7 @@ dataset_len = 1050
 n_val = 50
 max_epochs = 203
 walltime = '02'
+send_hpc_run = False
 
 ##########################################################################################
 logging.info('___ QUERY BY COMMITTEE ___\n')
@@ -92,51 +93,52 @@ def make_config():
 
     return config
 
-p = Path(nequip_train_dir).glob('**/*')
-model_files = [x for x in p if x.is_dir()]
-
-#elapsed_t = time.time()-start
-#left_t = walltime*3600 - elapsed_t
-#logging.info('\n## {} hours left over of HPC walltime'.format(round(left_t/3600,3)))
-#t_per_model = left_t/len_models
-#logging.info('## Each of the {} models will train {} hours'.format(len_models,round(t_per_model/3600,3)))
 hpc_dir = cycle_dir / 'hpc'
 if not hpc_dir.exists():
     hpc_dir.mkdir()
 
-os.system('module swap cluster/joltik')
+if not send_hpc_run:
+    elapsed_t = time.time()-start
+    left_t = int(walltime)*3600 - elapsed_t
+    logging.info('\n## {} hours left over of HPC walltime'.format(round(left_t/3600,3)))
+    t_per_model = left_t/len_models
+    logging.info('## Each of the {} models will train {} hours'.format(len_models,round(t_per_model/3600,3)))
 
-for file in sorted(model_files):
-    logging.info('\n############################################\n')
-    logging.info('Starting retraining of {}\n'.format(file.name))
-    config = make_config()
-    train_dir = file / 'trainer.pth'
-    #restart(train_dir, config)
-
-    train_dir=str(train_dir)
-
-    hpc_run_dir = hpc_dir / file.name
-    if not hpc_run_dir.exists():
-        hpc_run_dir.mkdir()
-
-    config.save(str(hpc_run_dir / 'updated_config.yaml'),'yaml')
-    config_dir = str(hpc_run_dir / 'updated_config.yaml')
-    
+def run_hpc(train_dir, config_dir):
     with open(hpc_run_dir / 'run.sh','w') as rsh:
-        rsh.write(
-    '''\
-    #!/bin/sh
+        rsh.write('''\
+#!/bin/sh
 
-    #PBS -l walltime={}:00:00
-    #PBS -l nodes=1:ppn=8:gpus=1
+#PBS -l walltime={}:00:00
+#PBS -l nodes=1:ppn=8:gpus=1
 
-    source ~/.torchenv
+source ~/.torchenv
 
-    python restart.py {} --update-config {} 
-    '''.format(walltime,train_dir,config_dir)
-    )
+python restart.py {} --update-config {} 
+    '''.format(walltime,train_dir,config_dir))
 
     os.system('qsub {} -d $(pwd) -e {} -o {}'.format(hpc_run_dir / 'run.sh', hpc_run_dir / 'error', hpc_run_dir / 'output'))
 
-    break
+p = Path(nequip_train_dir).glob('**/*')
+model_files = [x for x in p if x.is_dir()]
 
+for file in sorted(model_files):
+    if not file.name == 'processed':
+        logging.info('\n############################################\n')
+        logging.info('Starting retraining of {}\n'.format(file.name))
+        config = make_config()
+        train_dir = file / 'trainer.pth'
+
+        train_dir=str(train_dir)
+
+        hpc_run_dir = hpc_dir / file.name
+        if not hpc_run_dir.exists():
+            hpc_run_dir.mkdir()
+        config.save(str(hpc_run_dir / 'updated_config.yaml'),'yaml')
+        config_dir = str(hpc_run_dir / 'updated_config.yaml')
+
+        if send_hpc_run:
+            run_hpc(train_dir, config_dir)
+        else:
+            os.system('timeout {} python restart.py {} --update-config {}'.format(20,train_dir,config_dir))
+            time.sleep(20+1)
