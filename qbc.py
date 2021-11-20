@@ -1,7 +1,7 @@
-import os
 from dataclasses import dataclass
 import logging
 from pathlib import Path
+
 logging.basicConfig(format='',level=logging.INFO)
 
 import matplotlib.pyplot as plt
@@ -39,9 +39,9 @@ import torch
 from nequip.scripts.deploy import load_deployed_model
 from nequip.data import AtomicData
 
-models_dir = '/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/deployed/'
-traj_dir = '/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/600K.xyz'
-results_dir = '/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/committee_results/NVT/600K'
+models_dir = Path('/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/deployed/')
+traj_dir = Path('/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/600K.xyz')
+results_dir = Path('/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/committee_results/NVT/600K')
 
 @dataclass
 class qbc:

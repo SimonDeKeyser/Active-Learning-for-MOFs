@@ -1,5 +1,6 @@
 import time
 start = time.time()
+
 from pathlib import Path
 import logging
 import shutil
@@ -9,19 +10,31 @@ import ase.io
 from nequip.utils import Config
 
 from qbc import qbc
-logging.basicConfig(format='',level=logging.INFO)
 
+logging.basicConfig(format='',level=logging.INFO)
+'''
+Parameters:
+    - head_dir          Head directory for the QbC environment     
+    - traj_dir          MD trajectory file location
+    - cycle             The number of the QbC cycle 
+    - n_select          The number of new datapoints to select
+    - n_val             The number of datapoints in the validation set
+    - max_epochs        The maximum amount of epochs performed (these are a summation of all cycles)
+    - send_hpc_run      True: train each model seperately by performing a HPC bash command for each
+                        False: train each model in one HPC bash command, sequentially
+    - walltime          If send_hpc_run = True: the walltime given to each model's training session
+                        If send_hpc_run = False: the total walltime for training all models sequentially
+'''
 ##########################################################################################
 
-head_dir = Path('/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/committee_train')
-traj_dir = head_dir / 'unknown.xyz'
-cycle = 1
-n_select = 10
-dataset_len = 1050
+head_dir = Path('/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/committee_train') 
+traj_dir = head_dir / 'unknown.xyz'                                                      
+cycle = 1                                                                             
+n_select = 100                                                                 
 n_val = 50
-max_epochs = 203
-walltime = '02'
-send_hpc_run = False
+max_epochs = 5000   
+send_hpc_run = False                                                                    
+walltime = '24'
 
 ##########################################################################################
 logging.info('___ QUERY BY COMMITTEE ___\n')
@@ -29,6 +42,7 @@ logging.info('\t\t###########')
 logging.info('\t\t# CYCLE {} #'.format(cycle))
 logging.info('\t\t###########')
 
+assert head_dir.exists(), 'Head directory does not exist'
 assert traj_dir.exists(), 'Trajectory path does not exist'
 prev_name = 'cycle{}'.format(cycle-1)
 prev_nequip_train_dir = head_dir / prev_name / 'results'
@@ -43,9 +57,9 @@ dataset_dir = cycle_dir / 'data.xyz'
 def evaluate_committee():
     committee = qbc(name=name, models_dir=prev_nequip_train_dir, 
                     traj_dir=traj_dir, results_dir=head_dir,
-                    traj_index=':100', n_select=n_select, nequip_train=True
+                    traj_index=':5000', n_select=n_select, nequip_train=True
                 )
-    assert cycle_dir.is_dir(), 'OOPS'
+    assert cycle_dir.is_dir(), 'Something went wrong in the qbc class'
 
     committee.evaluate_committee(save=True)
     #committee.load()
@@ -54,12 +68,15 @@ def evaluate_committee():
     new_datapoints = committee.select_data('forces','mean')
     prev_dataset = ase.io.read(prev_dataset_dir,format='extxyz',index=':')
     new_dataset = new_datapoints + prev_dataset
+    dataset_len = len(new_dataset)
 
     ase.io.write(dataset_dir,new_dataset,format='extxyz')
     logging.info('Saved the new dataset of length {}'.format(len(new_dataset)))
+    return dataset_len
 
-#evaluate_committee()
-assert dataset_dir.exists(), 'OOPS'
+dataset_len = evaluate_committee()
+#dataset_len = 1050
+assert dataset_dir.exists(), 'The dataset was not saved'
 nequip_train_dir = cycle_dir / 'results'
 if not nequip_train_dir.exists():
     nequip_train_dir.mkdir()
@@ -86,7 +103,7 @@ def make_config():
 
     config.wandb_resume = True
 
-    config.n_train = dataset_len + n_select - n_val
+    config.n_train = dataset_len - n_val
     config.n_val = n_val
 
     config.max_epochs = max_epochs
@@ -140,5 +157,5 @@ for file in sorted(model_files):
         if send_hpc_run:
             run_hpc(train_dir, config_dir)
         else:
-            os.system('timeout {} python restart.py {} --update-config {}'.format(20,train_dir,config_dir))
-            time.sleep(20+1)
+            os.system('timeout {} python restart.py {} --update-config {}'.format(t_per_model-5,train_dir,config_dir))
+            time.sleep(t_per_model-4)

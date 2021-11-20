@@ -1,10 +1,12 @@
+import logging
+import argparse
+
 from nequip.utils import Config, dataset_from_config, load_file
 import torch
 from nequip.train.trainer_wandb import TrainerWandB
 from nequip.utils.wandb import resume
-import logging
+
 logging.basicConfig(format='',level=logging.INFO)
-import argparse
 
 def main():
     file_name, config = parse_command_line()
