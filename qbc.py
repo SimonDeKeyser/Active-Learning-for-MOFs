@@ -195,7 +195,7 @@ class qbc:
         time = np.arange(self.traj_len)
 
         fig, axs = plt.subplots(4, figsize=(10,12), gridspec_kw = {'wspace':0, 'hspace':0.05})
-        axs[0].plot(time, self.traj_e, '.r',markersize=4, label='$MD NNP$')
+        axs[0].plot(time, self.traj_e, '-.r',markersize=4, label='Trajectory')
         axs[0].plot(time, self.mean_e, '.k',markersize=4, label='$\overline{NNPs}$')
         axs[0].set_ylabel(ylabel1)
         axs[0].set_xticklabels([])
