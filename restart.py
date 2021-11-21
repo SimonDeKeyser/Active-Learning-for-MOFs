@@ -50,7 +50,7 @@ def restart(file_name, config):
     logging.info(f"Successfully reload the data set of type {dataset}...")
 
     trainer.set_dataset(dataset)
-    #trainer.train()
+    trainer.train()
 
 if __name__ == "__main__":
     main()

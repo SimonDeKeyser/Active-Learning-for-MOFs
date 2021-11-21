@@ -34,7 +34,7 @@ n_select = 100
 n_val = 50
 max_epochs = 5000   
 send_hpc_run = False                                                                    
-walltime = '24'
+walltime = '01'
 
 ##########################################################################################
 logging.info('___ QUERY BY COMMITTEE ___\n')
@@ -74,8 +74,8 @@ def evaluate_committee():
     logging.info('Saved the new dataset of length {}'.format(len(new_dataset)))
     return dataset_len
 
-dataset_len = evaluate_committee()
-#dataset_len = 1050
+#dataset_len = evaluate_committee()
+dataset_len = 1150
 assert dataset_dir.exists(), 'The dataset was not saved'
 nequip_train_dir = cycle_dir / 'results'
 if not nequip_train_dir.exists():
@@ -122,17 +122,14 @@ if not send_hpc_run:
     logging.info('## Each of the {} models will train {} hours'.format(len_models,round(t_per_model/3600,3)))
 
 def run_hpc(train_dir, config_dir):
-    with open(hpc_run_dir / 'run.sh','w') as rsh:
-        rsh.write('''\
-#!/bin/sh
-
-#PBS -l walltime={}:00:00
-#PBS -l nodes=1:ppn=8:gpus=1
-
-source ~/.torchenv
-
-python restart.py {} --update-config {} 
-    '''.format(walltime,train_dir,config_dir))
+    with open('run.sh','w') as rsh:
+        rsh.write(
+            '#!/bin/sh'
+            '\n\n#PBS -l walltime={}:00:00'
+            '\n#PBS -l nodes=1:ppn=8:gpus=1'
+            '\n\nsource ~/.torchenv'
+            '\npython restart.py {} --update-config {}'.format(walltime,train_dir,config_dir)
+        )
 
     os.system('qsub {} -d $(pwd) -e {} -o {}'.format(hpc_run_dir / 'run.sh', hpc_run_dir / 'error', hpc_run_dir / 'output'))
 
@@ -141,7 +138,7 @@ model_files = [x for x in p if x.is_dir()]
 
 for file in sorted(model_files):
     if not file.name == 'processed':
-        logging.info('\n############################################\n')
+        logging.info('\n###################################################################################################\n')
         logging.info('Starting retraining of {}\n'.format(file.name))
         config = make_config()
         train_dir = file / 'trainer.pth'
@@ -157,5 +154,6 @@ for file in sorted(model_files):
         if send_hpc_run:
             run_hpc(train_dir, config_dir)
         else:
-            os.system('timeout {} python restart.py {} --update-config {}'.format(t_per_model-5,train_dir,config_dir))
-            time.sleep(t_per_model-4)
+            os.system('timeout {} python restart.py {} --update-config {}'.format(t_per_model-3,train_dir,config_dir))
+            logging.info('\n###################################################################################################')
+            logging.info('\nTotal elapsed time: {} hours of total {} hours'.format(round((time.time()-start)/3600,3),round(int(walltime)/3600,3)))
