@@ -161,6 +161,7 @@ class qbc:
         part = np.argpartition(disagreement, -self.n_select)
         ind = np.array(part[-self.n_select:])
         selected_data = [self.traj[i] for i in ind]
+        self.ind = ind
         return selected_data
 
     def save(self):
@@ -186,6 +187,7 @@ class qbc:
         logging.info('... Results loaded\n')        
 
     def plot_traj_disagreement(self, from_results_dir=False):
+        assert self.ind is not None, 'First select indices to plot them'
         if from_results_dir:
             self.load()
         ylabel1 = '$E_{pred}$ [eV]'
@@ -202,31 +204,22 @@ class qbc:
         axs[0].legend()
         axs[0].grid()
         
-        part = np.argpartition(self.sig_e, -self.n_select)
-        ind = part[-self.n_select:]
-        
         axs[1].plot(time, self.sig_e,'.k', markersize=4)
-        axs[1].plot(time[ind],self.sig_e[ind],'.', color='red', markersize=4, label='{} highest $\sigma$'.format(self.n_select))
+        axs[1].plot(time[self.ind],self.sig_e[self.ind],'.', color='red', markersize=4, label='{} selected $\sigma$'.format(self.n_select))
         axs[1].set_ylabel(ylabel2)
         axs[1].grid()
         axs[1].set_xticklabels([])
         axs[1].legend()
         
-        part = np.argpartition(self.sig_f_mean, -self.n_select)
-        ind = part[-self.n_select:]
-        
         axs[2].plot(time, self.sig_f_mean,'.k', markersize=4)
-        axs[2].plot(time[ind],self.sig_f_mean[ind],'.', color='red', markersize=4, label='{} highest $\sigma$'.format(self.n_select))
+        axs[2].plot(time[self.ind],self.sig_f_mean[self.ind],'.', color='red', markersize=4, label='{} selected $\sigma$'.format(self.n_select))
         axs[2].set_ylabel(ylabel3)
         axs[2].grid()
         axs[2].set_xticklabels([])
         axs[2].legend()
         
-        part = np.argpartition(self.sig_f_max, -self.n_select)
-        ind = part[-self.n_select:]
-        
         axs[3].plot(time, self.sig_f_max,'.k', markersize=4)
-        axs[3].plot(time[ind],self.sig_f_max[ind],'.', color='red', markersize=4, label='{} highest $\sigma$'.format(self.n_select))
+        axs[3].plot(time[self.ind],self.sig_f_max[self.ind],'.', color='red', markersize=4, label='{} selected $\sigma$'.format(self.n_select))
         axs[3].set_ylabel(ylabel4)
         axs[3].grid()
         axs[3].set_xlabel('Step')
