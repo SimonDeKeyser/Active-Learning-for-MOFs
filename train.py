@@ -24,6 +24,9 @@ Parameters:
                         False: train each model in one HPC bash command, sequentially
     - walltime          If send_hpc_run = True: the walltime given to each model's training session
                         If send_hpc_run = False: the total walltime for training all models sequentially
+    - do_query          True: do the query by committee
+                        False: only possible if the new dataset is already saved as data.xyz in the current cycle folder
+    - prev_dataset_len  Length of the previous dataset, only has to be given if do_query = False
 '''
 ##########################################################################################
 
@@ -35,6 +38,8 @@ n_val = 50
 max_epochs = 5000   
 send_hpc_run = False                                                                    
 walltime = '01'
+do_query = False
+prev_dataset_len = 1050
 
 ##########################################################################################
 logging.info('___ QUERY BY COMMITTEE ___\n')
@@ -62,7 +67,6 @@ def evaluate_committee():
     assert cycle_dir.is_dir(), 'Something went wrong in the qbc class'
 
     committee.evaluate_committee(save=True)
-    #committee.load()
     committee.plot_traj_disagreement()
 
     new_datapoints = committee.select_data('forces','mean')
@@ -72,11 +76,15 @@ def evaluate_committee():
 
     ase.io.write(dataset_dir,new_dataset,format='extxyz')
     logging.info('Saved the new dataset of length {}'.format(len(new_dataset)))
+
     return dataset_len
 
-#dataset_len = evaluate_committee()
-dataset_len = 1150
-assert dataset_dir.exists(), 'The dataset was not saved'
+if do_query:
+    dataset_len = evaluate_committee()
+else:
+    dataset_len = prev_dataset_len + n_select
+
+assert dataset_dir.exists(), 'The dataset was not saved yet, do_query first'
 nequip_train_dir = cycle_dir / 'results'
 if not nequip_train_dir.exists():
     nequip_train_dir.mkdir()
