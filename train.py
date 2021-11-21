@@ -5,6 +5,7 @@ from pathlib import Path
 import logging
 import shutil
 import os 
+import random
 
 import ase.io
 from nequip.utils import Config
@@ -14,19 +15,20 @@ from qbc import qbc
 logging.basicConfig(format='',level=logging.INFO)
 '''
 Parameters:
-    - head_dir          Head directory for the QbC environment     
-    - traj_dir          MD trajectory file location
-    - cycle             The number of the QbC cycle 
-    - n_select          The number of new datapoints to select
-    - n_val             The number of datapoints in the validation set
-    - max_epochs        The maximum amount of epochs performed (these are a summation of all cycles)
-    - send_hpc_run      True: train each model seperately by performing a HPC bash command for each
-                        False: train each model in one HPC bash command, sequentially
-    - walltime          If send_hpc_run = True: the walltime given to each model's training session
-                        If send_hpc_run = False: the total walltime for training all models sequentially
-    - do_query          True: do the query by committee
-                        False: only possible if the new dataset is already saved as data.xyz in the current cycle folder
-    - prev_dataset_len  Length of the previous dataset, only has to be given if do_query = False
+    - head_dir              Head directory for the QbC environment     
+    - traj_dir              MD trajectory file location
+    - cycle                 The number of the QbC cycle 
+    - n_select              The number of new datapoints to select
+    - n_val                 The number of datapoints in the validation set
+    - max_epochs            The maximum amount of epochs performed (these are a summation of all cycles)
+    - send_hpc_run          True: train each model seperately by performing a HPC bash command for each
+                            False: train each model in one HPC bash command, sequentially
+    - walltime              If send_hpc_run = True: the walltime given to each model's training session
+                            If send_hpc_run = False: the total walltime for training all models sequentially
+    - do_evaluation         True: do the query by committee
+                            False: only possible if the new dataset is already saved as data.xyz in the current cycle folder
+    - load_query_results    True: if do_evaluation = True then the disagreement results will be loaded if saved previously
+    - prev_dataset_len      Length of the previous dataset, only has to be given if do_query = False
 '''
 ##########################################################################################
 
@@ -38,7 +40,8 @@ n_val = 50
 max_epochs = 5000   
 send_hpc_run = False                                                                    
 walltime = '01'
-do_query = False
+do_evaluation = False
+load_query_results = True
 prev_dataset_len = 1050
 
 ##########################################################################################
@@ -59,19 +62,23 @@ name = 'cycle{}'.format(cycle)
 cycle_dir = head_dir / name
 dataset_dir = cycle_dir / 'data.xyz'
 
-def evaluate_committee():
+def evaluate_committee(load):
     committee = qbc(name=name, models_dir=prev_nequip_train_dir, 
                     traj_dir=traj_dir, results_dir=head_dir,
                     traj_index=':5000', n_select=n_select, nequip_train=True
                 )
     assert cycle_dir.is_dir(), 'Something went wrong in the qbc class'
 
-    committee.evaluate_committee(save=True)
+    if not load:
+        committee.evaluate_committee(save=True)
+    else:
+        committee.load()
     committee.plot_traj_disagreement()
 
     new_datapoints = committee.select_data('forces','mean')
     prev_dataset = ase.io.read(prev_dataset_dir,format='extxyz',index=':')
     new_dataset = new_datapoints + prev_dataset
+    random.shuffle(new_dataset)
     dataset_len = len(new_dataset)
 
     ase.io.write(dataset_dir,new_dataset,format='extxyz')
@@ -79,8 +86,8 @@ def evaluate_committee():
 
     return dataset_len
 
-if do_query:
-    dataset_len = evaluate_committee()
+if do_evaluation:
+    dataset_len = evaluate_committee(load_query_results)
 else:
     dataset_len = prev_dataset_len + n_select
 
