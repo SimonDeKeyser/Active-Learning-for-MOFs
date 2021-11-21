@@ -24,12 +24,16 @@ def parse_command_line():
     config = Config.from_file(args.update_config)
     return file_name, config
 
-def restart(file_name, config):
+def restart(file, config):
     dictionary = load_file(
         supported_formats=dict(torch=["pt", "pth"]),
-        filename=file_name,
+        filename= file + '/trainer.pth',
         enforced_format="torch",
     )
+    
+    dictionary['progress']['last_model_path'] = file + '/last_model.pth'
+    dictionary['progress']['best_model_path'] = file + '/best_model.pth'
+    dictionary['progress']['trainer_save_path'] = file + '/trainer.pth'
 
     dictionary.update(config)
     dictionary["run_time"] = 1 + dictionary.get("run_time", 0)
