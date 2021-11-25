@@ -51,5 +51,5 @@ if __name__ == "__main__":
     head_dir = Path('/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/committee_train')
     imgs_dir = 'qbc_imgs' 
     visual = qbc_vis(head_dir, imgs_dir)
-    #visual.mean_disagreement('forces','mean')
-    visual.epoch_metrics()
+    visual.mean_disagreement('forces','mean')
+    #visual.epoch_metrics()

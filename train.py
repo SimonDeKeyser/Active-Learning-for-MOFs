@@ -31,7 +31,8 @@ Parameters:
     - head_dir              Head directory for the QbC environment     
     - traj_dir              MD trajectory file location
     - n_select              The number of new datapoints to select
-    - n_val                 The number of datapoints in the validation set
+    - n_val_0               The number of datapoints in the first validation set
+    - n_val_add             The number of datapoints to add to the validation set each cycle (n_val_add < n_select)
     - max_epochs            The maximum amount of epochs performed (these are a summation of all cycles)
     - send_hpc_run          True: train each model seperately by performing a HPC bash command for each
                             False: train each model in one HPC bash command, sequentially
@@ -46,8 +47,9 @@ Parameters:
 
 head_dir = Path('/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/committee_train') 
 traj_dir = head_dir / 'unknown.xyz'                                                                                                                             
-n_select = 100                                                                 
-n_val = 50
+n_select = 100
+n_val_0 = 50                                                                 
+n_val_add = 10
 max_epochs = 50000   
 send_hpc_run = False                                                                    
 walltime = '24'
@@ -88,8 +90,10 @@ def evaluate_committee(load):
     new_datapoints = committee.select_data('forces','mean')
     committee.plot_traj_disagreement()
     prev_dataset = ase.io.read(prev_dataset_dir,format='extxyz',index=':')
-    new_dataset = new_datapoints + prev_dataset
-    random.shuffle(new_dataset)
+    assert n_val_add < n_select, 'No training points added but only validation points'
+    len_train_add = n_select - n_val_add
+    random.shuffle(new_datapoints)
+    new_dataset = new_datapoints[:len_train_add] + prev_dataset + new_datapoints[len_train_add:]
     dataset_len = len(new_dataset)
 
     ase.io.write(dataset_dir,new_dataset,format='extxyz')
@@ -129,8 +133,8 @@ def make_config():
 
     config.wandb_resume = True
 
-    config.n_train = dataset_len - n_val
-    config.n_val = n_val
+    config.n_train = dataset_len - n_val_0 - cycle*n_val_add
+    config.n_val = n_val_0 + cycle*n_val_add
 
     config.max_epochs = max_epochs
 
@@ -195,4 +199,4 @@ if not send_hpc_run:
             '\npython ../train.py {} --traj-index {}'.format(walltime,cycle+1,index)
         )
     if int(old[1])+old_len <= 30000:
-        os.system('qsub {} -d $(pwd)'.format('cycle{}.sh'.format(cycle+1)))
+        os.system('qsub cycle{}.sh -d $(pwd)'.format(cycle+1))
