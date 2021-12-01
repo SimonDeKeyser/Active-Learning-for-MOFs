@@ -31,6 +31,7 @@ def restart(file, config):
         enforced_format="torch",
     )
     
+    dictionary['workdir'] = file
     dictionary['progress']['last_model_path'] = file + '/last_model.pth'
     dictionary['progress']['best_model_path'] = file + '/best_model.pth'
     dictionary['progress']['trainer_save_path'] = file + '/trainer.pth'
@@ -54,8 +55,7 @@ def restart(file, config):
     logging.info(f"Successfully reload the data set of type {dataset}...")
 
     trainer.set_dataset(dataset)
-    trainer.save()
-    config.save(file+'/config_final','yaml')
+    config.save(file+'/config_final.yaml','yaml')
     trainer.train()
 
 if __name__ == "__main__":

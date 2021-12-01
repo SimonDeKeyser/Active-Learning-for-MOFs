@@ -54,7 +54,7 @@ max_epochs = 50000
 send_hpc_run = False                                                                    
 walltime = '24'
 do_evaluation = True
-load_query_results = False
+load_query_results = True
 prev_dataset_len = 1050
 
 ##########################################################################################
@@ -182,7 +182,7 @@ for file in sorted(model_files):
         if send_hpc_run:
             run_hpc(hpc_run_dir, train_dir, config_dir)
         else:
-            os.system('timeout {} python ../restart.py {} --update-config {}'.format(t_per_model-3,train_dir,config_dir))
+            #os.system('timeout {} python ../restart.py {} --update-config {}'.format(t_per_model-3,train_dir,config_dir))
             logging.info('\n###################################################################################################')
             logging.info('\nTotal elapsed time: {} hours of total {} hours'.format(round((time.time()-start)/3600,3),round(int(walltime),3)))
             
