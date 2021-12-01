@@ -14,7 +14,7 @@ len_models = 4
 wandb_project = 'q4'
 n_train = 100
 n_val = 10
-walltime = '12'
+walltime = '01'
 
 ##########################################################################################
 
@@ -77,7 +77,7 @@ def make_train_scripts():
                 '\n\n#PBS -l walltime={}:00:00'
                 '\n#PBS -l nodes=1:ppn=8:gpus=1'
                 '\n\nsource ~/.torchenv'
-                '\npython nequip-train {}'.format(walltime,str(conf_dir / 'config{}.yaml'.format(i)))
+                '\nnequip-train {}'.format(walltime,str(conf_dir / 'config{}.yaml'.format(i)))
             )
     logging.info('\t-Done!')
     return hpc_dir
