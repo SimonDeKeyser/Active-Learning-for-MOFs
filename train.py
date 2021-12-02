@@ -45,16 +45,16 @@ Parameters:
 '''
 ##########################################################################################
 
-head_dir = Path('/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/query/committee_train') 
-traj_dir = head_dir / 'unknown.xyz'                                                                                                                             
+head_dir = Path('/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/q4/qbc_train') 
+traj_dir = head_dir / 'trajectory.xyz'                                                                                                                             
 n_select = 100
-n_val_0 = 50                                                                 
+n_val_0 = 10                                                                 
 n_val_add = 10
 max_epochs = 50000   
 send_hpc_run = False                                                                    
-walltime = '24'
+walltime = '04'
 do_evaluation = True
-load_query_results = True
+load_query_results = False
 prev_dataset_len = 1050
 
 ##########################################################################################
@@ -182,7 +182,7 @@ for file in sorted(model_files):
         if send_hpc_run:
             run_hpc(hpc_run_dir, train_dir, config_dir)
         else:
-            #os.system('timeout {} python ../restart.py {} --update-config {}'.format(t_per_model-3,train_dir,config_dir))
+            os.system('timeout {} python ../restart.py {} --update-config {}'.format(t_per_model-3,train_dir,config_dir))
             logging.info('\n###################################################################################################')
             logging.info('\nTotal elapsed time: {} hours of total {} hours'.format(round((time.time()-start)/3600,3),round(int(walltime),3)))
             
