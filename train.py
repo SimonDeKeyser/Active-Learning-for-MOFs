@@ -18,9 +18,13 @@ parser = argparse.ArgumentParser(
             description="Perform a Query by Committee cycle."
         )
 parser.add_argument("cycle", help="The number of the QbC cycle ")
+parser.add_argument("walltime", help='The walltime for training the models (should be equal to the HPC walltime for sequential training'
+                                    'If send_hpc_run = True: the walltime given to each model training session'
+                                    'If send_hpc_run = False: the total walltime for training all models sequentially')
 parser.add_argument("--traj-index", help="The indices of the trajectory to perform QbC on")
 args = parser.parse_args()
 cycle = int(args.cycle)
+walltime = args.walltime
 if args.traj_index:
     traj_index = args.traj_index
 else:
@@ -28,31 +32,30 @@ else:
 
 '''
 Parameters:
-    - head_dir              Head directory for the QbC environment     
-    - traj_dir              MD trajectory file location
-    - n_select              The number of new datapoints to select
-    - n_val_0               The number of datapoints in the first validation set
-    - n_val_add             The number of datapoints to add to the validation set each cycle (n_val_add < n_select)
-    - max_epochs            The maximum amount of epochs performed (these are a summation of all cycles)
-    - send_hpc_run          True: train each model seperately by performing a HPC bash command for each
-                            False: train each model in one HPC bash command, sequentially
-    - walltime              If send_hpc_run = True: the walltime given to each model's training session
-                            If send_hpc_run = False: the total walltime for training all models sequentially
-    - do_evaluation         True: do the query by committee
-                            False: only possible if the new dataset is already saved as data.xyz in the current cycle folder
-    - load_query_results    True: if do_evaluation = True then the disagreement results will be loaded if saved previously
-    - prev_dataset_len      Length of the previous dataset, only has to be given if do_query = False
+    - head_dir                  Head directory for the QbC environment     
+    - traj_dir                  MD trajectory file location
+    - n_select                  The number of new datapoints to select
+    - n_val_0                   The number of datapoints in the first validation set
+    - n_val_add                 The number of datapoints to add to the validation set each cycle (n_val_add < n_select)
+    - max_epochs                The maximum amount of epochs performed (these are a summation of all cycles)
+    - send_hpc_run              True: train each model seperately by performing a HPC bash command for each
+                                False: train each model in one HPC bash command, sequentially
+    - walltime_per_model_add    The walltime added per model in each cycle because the dataset increases
+    - do_evaluation             True: do the query by committee
+                                False: only possible if the new dataset is already saved as data.xyz in the current cycle folder
+    - load_query_results        True: if do_evaluation = True then the disagreement results will be loaded if saved previously
+    - prev_dataset_len          Length of the previous dataset, only has to be given if do_query = False
 '''
 ##########################################################################################
 
 head_dir = Path('/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/q4/qbc_train') 
 traj_dir = head_dir / 'trajectory.xyz'                                                                                                                             
-n_select = 100
+n_select = 110
 n_val_0 = 10                                                                 
 n_val_add = 10
 max_epochs = 50000   
-send_hpc_run = False                                                                    
-walltime = '24'
+send_hpc_run = False                                                                 
+walltime_per_model_add = 1
 do_evaluation = True
 load_query_results = False
 prev_dataset_len = 1050
@@ -191,13 +194,14 @@ if not send_hpc_run:
     old = traj_index.split(':')
     old_len = int(old[1]) - int(old[0])
     index = '{}:{}'.format(int(old[0])+old_len, int(old[1])+old_len)
-    with open('cycle{}.sh'.format(cycle+1),'w') as rsh:
+    next_walltime = int(walltime) + len_models*walltime_per_model_add
+    with open('cycle{:02d}.sh'.format(cycle+1),'w') as rsh:
         rsh.write(
             '#!/bin/sh'
             '\n\n#PBS -l walltime={}:00:00'
             '\n#PBS -l nodes=1:ppn=8:gpus=1'
             '\n\nsource ~/.torchenv'
-            '\npython ../train.py {} --traj-index {}'.format(walltime,cycle+1,index)
+            '\npython ../train.py {} {:02d} --traj-index {}'.format(next_walltime,cycle+1,next_walltime,index)
         )
     if int(old[1])+old_len <= 30000:
         os.system('qsub cycle{}.sh -d $(pwd)'.format(cycle+1))
