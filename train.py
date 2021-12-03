@@ -52,7 +52,7 @@ n_val_0 = 10
 n_val_add = 10
 max_epochs = 50000   
 send_hpc_run = False                                                                    
-walltime = '04'
+walltime = '24'
 do_evaluation = True
 load_query_results = False
 prev_dataset_len = 1050
@@ -137,6 +137,7 @@ def make_config():
     config.n_val = n_val_0 + cycle*n_val_add
 
     config.max_epochs = max_epochs
+    config.lr_scheduler_patience = 1000000
 
     return config
 

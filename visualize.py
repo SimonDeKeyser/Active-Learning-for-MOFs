@@ -39,17 +39,43 @@ class qbc_vis:
         plt.ylabel(ylabel)
         plt.savefig(self.imgs_dir / 'mean_disagreement', bbox_inches='tight')
 
+    def best_mae_hour(self, metrics):
+        clean_df = metrics[metrics[' wall'] != ' wall']
+        cycle_stops = metrics[metrics[' wall'] == ' wall'].index
+        cycle_stops = [-1] + list(cycle_stops)
+        wall = []
+        last_cycle_wall = 0
+        for i in range(len(cycle_stops)-1):
+            wall += list(metrics[' wall'].iloc[cycle_stops[i]+1:cycle_stops[i+1]].to_numpy(np.float32) + last_cycle_wall)
+            last_cycle_wall = wall[-1]
+        wall += list(metrics[' wall'].iloc[cycle_stops[-1]+1:].to_numpy(np.float32) + last_cycle_wall)
+        best_mae = []
+        time = []
+        for h in range(1,48):
+            if not h > wall[-1]/3600:
+                best_mae.append(clean_df[np.array(wall)/3600 < h][' Validation_all_f_mae'].to_numpy(dtype=np.float64).min())
+                time.append(h)
+            else:
+                break
+        return np.array(time), np.array(best_mae)
+
     def epoch_metrics(self):
-        for cycle in self.cycles:
-            p = (cycle / 'results').glob('**/*')
-            models = [x for x in p if (x.is_dir() and x.name[:5] == 'model')]
-            for model in sorted(models):
-                metrics_epoch = pd.read_csv(model / 'metrics_epoch.csv')
+        p = (self.cycles[-1] / 'results').glob('**/*')
+        models = [x for x in p if (x.is_dir() and x.name[:5] == 'model')]
+        for model in sorted(models):
+            metrics_epoch = pd.read_csv(model / 'metrics_epoch.csv')
+            time, best_mae = self.best_mae_hour(metrics_epoch)
+            plt.plot(time, 1000*best_mae, '.--',label=model.name)
+        plt.ylabel('Validation Forces MAE [meV/$\AA$]')
+        plt.xlabel('Training Time [h]')
+        plt.yscale('log')
+        plt.legend()
+        plt.savefig(self.imgs_dir / 'val_f_mae', bbox_inches='tight')
                 
 
 if __name__ == "__main__":
     head_dir = Path('/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/q4/qbc_train')
     imgs_dir = 'qbc_imgs' 
     visual = qbc_vis(head_dir, imgs_dir)
-    visual.mean_disagreement('forces','mean')
-    #visual.epoch_metrics()
+    #visual.mean_disagreement('forces','mean')
+    visual.epoch_metrics()
