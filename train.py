@@ -140,7 +140,7 @@ def make_config():
     config.n_val = n_val_0 + cycle*n_val_add
 
     config.max_epochs = max_epochs
-    config.lr_scheduler_patience = 1000000
+    config.lr_scheduler_name = 'none'
 
     return config
 
@@ -195,10 +195,10 @@ if not send_hpc_run:
     old_len = int(old[1]) - int(old[0])
     index = '{}:{}'.format(int(old[0])+old_len, int(old[1])+old_len)
     next_walltime = int(walltime) + len_models*walltime_per_model_add
-    with open('cycle{:02d}.sh'.format(cycle+1),'w') as rsh:
+    with open('cycle{}.sh'.format(cycle+1),'w') as rsh:
         rsh.write(
             '#!/bin/sh'
-            '\n\n#PBS -l walltime={}:00:00'
+            '\n\n#PBS -l walltime={:02d}:00:00'
             '\n#PBS -l nodes=1:ppn=8:gpus=1'
             '\n\nsource ~/.torchenv'
             '\npython ../train.py {} {:02d} --traj-index {}'.format(next_walltime,cycle+1,next_walltime,index)

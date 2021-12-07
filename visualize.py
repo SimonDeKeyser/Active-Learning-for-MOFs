@@ -2,6 +2,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+
 
 class qbc_vis:
     def __init__(self, head_dir:Path, imgs_dir:str) -> None:
@@ -45,9 +47,11 @@ class qbc_vis:
         cycle_stops = [-1] + list(cycle_stops)
         wall = []
         last_cycle_wall = 0
+        cycle_walls = []
         for i in range(len(cycle_stops)-1):
             wall += list(metrics[' wall'].iloc[cycle_stops[i]+1:cycle_stops[i+1]].to_numpy(np.float32) + last_cycle_wall)
             last_cycle_wall = wall[-1]
+            cycle_walls.append(last_cycle_wall/3600)
         wall += list(metrics[' wall'].iloc[cycle_stops[-1]+1:].to_numpy(np.float32) + last_cycle_wall)
         best_mae = []
         time = []
@@ -57,20 +61,79 @@ class qbc_vis:
                 time.append(h)
             else:
                 break
-        return np.array(time), np.array(best_mae)
+        return np.array(time), np.array(best_mae), np.array(cycle_walls)
 
-    def epoch_metrics(self):
-        p = (self.cycles[-1] / 'results').glob('**/*')
+    def train_mae_hour(self, metrics):
+        clean_df = metrics[metrics[' wall'] != ' wall']
+        cycle_stops = metrics[metrics[' wall'] == ' wall'].index
+        cycle_stops = [-1] + list(cycle_stops)
+        wall = []
+        last_cycle_wall = 0
+        cycle_walls = []
+        for i in range(len(cycle_stops)-1):
+            wall += list(metrics[' wall'].iloc[cycle_stops[i]+1:cycle_stops[i+1]].to_numpy(np.float32) + last_cycle_wall)
+            last_cycle_wall = wall[-1]
+            cycle_walls.append(last_cycle_wall/3600)
+        wall += list(metrics[' wall'].iloc[cycle_stops[-1]+1:].to_numpy(np.float32) + last_cycle_wall)
+        train_mae = []
+        time = []
+        for h in np.arange(0.01,48,0.25):
+            if not h > wall[-1]/3600:
+                train_mae.append(clean_df[np.array(wall)/3600 < h][' Training_all_f_mae'].to_numpy(dtype=np.float64)[-1])
+                time.append(h)
+            else:
+                break
+        return np.array(time), np.array(train_mae), np.array(cycle_walls)
+
+    def epoch_metrics(self, c=-1):
+        p = (self.cycles[c] / 'results').glob('**/*')
         models = [x for x in p if (x.is_dir() and x.name[:5] == 'model')]
+        mx = 0
+        mn = 10
+        fig, ax = plt.subplots()
         for model in sorted(models):
             metrics_epoch = pd.read_csv(model / 'metrics_epoch.csv')
-            time, best_mae = self.best_mae_hour(metrics_epoch)
-            plt.plot(time, 1000*best_mae, '.--',label=model.name)
-        plt.ylabel('Validation Forces MAE [meV/$\AA$]')
-        plt.xlabel('Training Time [h]')
-        plt.yscale('log')
+            time, best_mae, cycle_stops = self.best_mae_hour(metrics_epoch)
+            if max(best_mae) > mx:
+                mx = max(best_mae)
+            if min(best_mae) < mn:
+                mn = min(best_mae)
+            ax.plot(time, 1000*best_mae, '.--',label=model.name)
+        count = 1
+        for cycle_stop in cycle_stops:
+            ax.vlines(cycle_stop, 1000*mn, 1000*mx,color='black')
+            ax.text(cycle_stop + 0.1, 1000*mn, str(count))
+            count += 1
+        ax.set_ylabel('Validation Forces Best MAE [meV/$\AA$]')
+        ax.set_xlabel('Training Time [h]')
+        ax.set_yscale('log')
+        ax.yaxis.set_minor_formatter(mticker.ScalarFormatter())
         plt.legend()
         plt.savefig(self.imgs_dir / 'val_f_mae', bbox_inches='tight')
+        plt.close()
+
+        mx = 0
+        mn = 10
+        fig, ax = plt.subplots()
+        for model in sorted(models):
+            metrics_epoch = pd.read_csv(model / 'metrics_epoch.csv')
+            time, train_mae, cycle_stops = self.train_mae_hour(metrics_epoch)
+            if max(train_mae) > mx:
+                mx = max(train_mae)
+            if min(train_mae) < mn:
+                mn = min(train_mae)
+            ax.plot(time, 1000*train_mae, '.--',label=model.name)
+        count = 1
+        for cycle_stop in cycle_stops:
+            ax.vlines(cycle_stop, 1000*mn, 1000*mx,color='black')
+            ax.text(cycle_stop + 0.1, 1000*mn, str(count))
+            count += 1
+        ax.set_ylabel('Training Forces MAE [meV/$\AA$]')
+        ax.set_xlabel('Training Time [h]')
+        ax.set_yscale('log')
+        ax.yaxis.set_minor_formatter(mticker.ScalarFormatter())
+        plt.legend()
+        plt.savefig(self.imgs_dir / 'train_f_mae', bbox_inches='tight')
                 
 
 if __name__ == "__main__":
@@ -78,4 +141,4 @@ if __name__ == "__main__":
     imgs_dir = 'qbc_imgs' 
     visual = qbc_vis(head_dir, imgs_dir)
     #visual.mean_disagreement('forces','mean')
-    visual.epoch_metrics()
+    visual.epoch_metrics(-2)
