@@ -50,11 +50,7 @@ Parameters:
 '''
 ##########################################################################################
 
-<<<<<<< HEAD
-root = Path('../').resolve() # starting the run from /runs folder
-=======
-root = Path('../').resolve()
->>>>>>> d2acaf819c8ae37c37bb36e860f46eb20378f9d4
+root = Path('../../').resolve() # starting the run from /runs folder
 head_dir = root / 'qbc_train'
 traj_dir = head_dir / 'trajectory.xyz'                                                                                                                             
 n_select = 110
