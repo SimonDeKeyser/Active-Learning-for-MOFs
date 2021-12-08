@@ -48,7 +48,8 @@ Parameters:
 '''
 ##########################################################################################
 
-head_dir = Path('/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/q4/qbc_train') 
+root = Path('../').resolve()
+head_dir = root / 'qbc_train'
 traj_dir = head_dir / 'trajectory.xyz'                                                                                                                             
 n_select = 110
 n_val_0 = 10                                                                 

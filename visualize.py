@@ -77,7 +77,7 @@ class qbc_vis:
         wall += list(metrics[' wall'].iloc[cycle_stops[-1]+1:].to_numpy(np.float32) + last_cycle_wall)
         train_mae = []
         time = []
-        for h in np.arange(0.01,48,0.25):
+        for h in np.arange(0.1,48,0.25):
             if not h > wall[-1]/3600:
                 train_mae.append(clean_df[np.array(wall)/3600 < h][' Training_all_f_mae'].to_numpy(dtype=np.float64)[-1])
                 time.append(h)
@@ -108,6 +108,7 @@ class qbc_vis:
         ax.set_xlabel('Training Time [h]')
         ax.set_yscale('log')
         ax.yaxis.set_minor_formatter(mticker.ScalarFormatter())
+        ax.yaxis.set_major_formatter(mticker.ScalarFormatter())
         plt.legend()
         plt.savefig(self.imgs_dir / 'val_f_mae', bbox_inches='tight')
         plt.close()
@@ -132,6 +133,7 @@ class qbc_vis:
         ax.set_xlabel('Training Time [h]')
         ax.set_yscale('log')
         ax.yaxis.set_minor_formatter(mticker.ScalarFormatter())
+        ax.yaxis.set_major_formatter(mticker.ScalarFormatter())
         plt.legend()
         plt.savefig(self.imgs_dir / 'train_f_mae', bbox_inches='tight')
                 
@@ -140,5 +142,5 @@ if __name__ == "__main__":
     head_dir = Path('/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/q4/qbc_train')
     imgs_dir = 'qbc_imgs' 
     visual = qbc_vis(head_dir, imgs_dir)
-    #visual.mean_disagreement('forces','mean')
+    visual.mean_disagreement('forces','mean')
     visual.epoch_metrics(-2)
