@@ -45,10 +45,13 @@ Parameters:
                                 False: only possible if the new dataset is already saved as data.xyz in the current cycle folder
     - load_query_results        True: if do_evaluation = True then the disagreement results will be loaded if saved previously
     - prev_dataset_len          Length of the previous dataset, only has to be given if do_query = False
+    - prop                      The property to be used in the disagreement metric, choose from: energy, forces, random
+    - red                       In the case of prop = forces, choose the reduction from: mean, max
 '''
 ##########################################################################################
 
-head_dir = Path('/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/q4/qbc_train') 
+root = Path('../../').resolve() # starting the run from /runs folder
+head_dir = root / 'qbc_train'
 traj_dir = head_dir / 'trajectory.xyz'                                                                                                                             
 n_select = 110
 n_val_0 = 10                                                                 
@@ -59,6 +62,8 @@ walltime_per_model_add = 1
 do_evaluation = True
 load_query_results = False
 prev_dataset_len = 1050
+prop = 'random'
+red = None
 
 ##########################################################################################
 logging.info('___ QUERY BY COMMITTEE ___\n')
@@ -90,7 +95,7 @@ def evaluate_committee(load):
     else:
         committee.load()
 
-    new_datapoints = committee.select_data('forces','mean')
+    new_datapoints = committee.select_data(prop=prop, red=red)
     committee.plot_traj_disagreement()
     prev_dataset = ase.io.read(prev_dataset_dir,format='extxyz',index=':')
     assert n_val_add < n_select, 'No training points added but only validation points'

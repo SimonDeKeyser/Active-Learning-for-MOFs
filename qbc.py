@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import logging
+import random
 from pathlib import Path
 
 logging.basicConfig(format='',level=logging.INFO)
@@ -150,16 +151,21 @@ class qbc:
             self.save()
 
     def select_data(self, prop, red=None):
-        if prop == 'energy':
-            disagreement = self.sig_e
-        if prop == 'forces':
-            if red == 'mean':
-                disagreement = self.sig_f_mean
-            if red == 'max':
-                disagreement = self.sig_f_max 
-        assert disagreement is not None, 'No valid disagreement metric was given'
-        part = np.argpartition(disagreement, -self.n_select)
-        ind = np.array(part[-self.n_select:])
+        if prop != 'random':
+            if prop == 'energy':
+                disagreement = self.sig_e
+            if prop == 'forces':
+                if red == 'mean':
+                    disagreement = self.sig_f_mean
+                if red == 'max':
+                    disagreement = self.sig_f_max 
+            
+            assert disagreement is not None, 'No valid disagreement metric was given'
+            part = np.argpartition(disagreement, -self.n_select)
+            ind = np.array(part[-self.n_select:])
+        else:
+            ind = random.sample(range(len(self.traj)),self.n_select)
+        assert ind is not None, 'No valid disagreement metric was given'
         selected_data = [self.traj[i] for i in ind]
         self.ind = ind
         return selected_data

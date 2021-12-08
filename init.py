@@ -6,12 +6,32 @@ from nequip.utils import Config
 
 logging.basicConfig(format='',level=logging.INFO)
 
+'''
+IMPORTANT:
+    Before making the QbC environment and doing the first training,
+    the folder (called QbC) containing this python script should be in a certain root directory
+    and that root directory should contain:
+        * A qbc training folder, ex.: qbc_train
+        * A folder called confs, that contains a NequIP config file called config0.yaml
+    
+    The qbc training folder should contain:
+        * A folder called cycle0
+        * And cycle0 contains the first dataset called data.xyz
+
+Parameters:
+    - head_dir                  Head directory for the QbC environment     
+    - len_models                The amount of models you want in the committee
+    - wandb_project             The name of the wandb project 
+    - n_train                   The number of datapoints in the first training set
+    - n_val                     The number of datapoints in the first validation set
+    - walltime                  The walltime for the first training
+'''
 ##########################################################################################
 
 root = Path('../').resolve()
 head_dir = root / 'qbc_train'
 len_models = 4
-wandb_project = 'q4'
+wandb_project = 'q4_random'
 n_train = 100
 n_val = 10
 walltime = '01'
