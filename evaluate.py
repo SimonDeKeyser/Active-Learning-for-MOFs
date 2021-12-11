@@ -34,7 +34,7 @@ evaluate_dir = head_dir / 'evaluation'
 if not evaluate_dir.exists():
     evaluate_dir.mkdir()
 
-def make_dataset_config(train_config):
+def make_dataset_config(train_config, hpc_run_dir):
     config = Config()
 
     config.root = str(evaluate_dir)
@@ -46,7 +46,7 @@ def make_dataset_config(train_config):
 
     return str(hpc_run_dir / 'dataset_config.yaml')
 
-def make_metrics_config(train_config):
+def make_metrics_config(train_config, hpc_run_dir):
     config = Config()
 
     config.metrics_components = train_config['metrics_components']    
@@ -77,8 +77,8 @@ def evaluate():
             if not hpc_run_dir.exists():
                 hpc_run_dir.mkdir()
 
-            dataset_config = make_dataset_config(config)
-            metrics_config = make_metrics_config(config)
+            dataset_config = make_dataset_config(config, hpc_run_dir)
+            metrics_config = make_metrics_config(config, hpc_run_dir)
 
             with open(hpc_run_dir / 'eval.sh','w') as rsh:
                 rsh.write(
@@ -107,8 +107,7 @@ def results():
     e_mae = []
     for file in sorted(model_files):
         model_names.append(file.name)
-        test = '/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/scaling_stress_test/evaluation/closed_4_5_l_2'
-        f = open(test, 'r')
+        f = open(file / 'output', 'r')
         lines = f.readlines()
         for line in lines:
             if '=' in line:
