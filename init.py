@@ -31,10 +31,10 @@ Parameters:
 root = Path('../').resolve()
 head_dir = root / 'qbc_train'
 len_models = 4
-wandb_project = 'q4_random'
+wandb_project = 'q4'
 n_train = 100
 n_val = 10
-walltime = '01'
+walltime = 1
 
 ##########################################################################################
 
@@ -94,7 +94,7 @@ def make_train_scripts():
         with open(hpc_dir / file / 'train.sh','w') as rsh:
             rsh.write(
                 '#!/bin/sh'
-                '\n\n#PBS -l walltime={}:00:00'
+                '\n\n#PBS -l walltime={:02d}:00:00'
                 '\n#PBS -l nodes=1:ppn=8:gpus=1'
                 '\n\nsource ~/.torchenv'
                 '\nnequip-train {}'.format(walltime,str(conf_dir / 'config{}.yaml'.format(i)))
@@ -106,8 +106,8 @@ def start_training():
     logging.info('#Starting the training ...\n')
     for i in range(len_models):
         file = hpc_dir / 'model{}'.format(i)
-        logging.info('\t-model{} submitted'.format(i))
         os.system('module swap cluster/joltik; qsub {} -d $(pwd) -e {} -o {}'.format(file / 'train.sh', file / 'error', file / 'output'))
+        logging.info('\t-model{} submitted'.format(i))
 
 cycle_dir, conf_dir = check_init_state()
 

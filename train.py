@@ -62,8 +62,8 @@ walltime_per_model_add = 1
 do_evaluation = True
 load_query_results = False
 prev_dataset_len = 1050
-prop = 'random'
-red = None
+prop = 'forces'
+red = 'mean'
 
 ##########################################################################################
 logging.info('___ QUERY BY COMMITTEE ___\n')
