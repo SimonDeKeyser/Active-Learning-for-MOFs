@@ -119,7 +119,7 @@ nequip_train_dir = cycle_dir / 'results'
 if not nequip_train_dir.exists():
     nequip_train_dir.mkdir()
 
-p = Path(prev_nequip_train_dir).glob('**/*')
+p = Path(prev_nequip_train_dir).glob('*')
 model_files = [x for x in p if x.is_dir()]
 
 len_models = 0
@@ -172,7 +172,7 @@ def run_hpc(hpc_run_dir, train_dir, config_dir):
 
     os.system('qsub {} -d $(pwd) -e {} -o {}'.format(hpc_run_dir / 'run.sh', hpc_run_dir / 'error', hpc_run_dir / 'output'))
 
-p = Path(nequip_train_dir).glob('**/*')
+p = Path(nequip_train_dir).glob('*')
 model_files = [x for x in p if x.is_dir()]
 
 for file in sorted(model_files):
@@ -200,13 +200,13 @@ if not send_hpc_run:
     old_len = int(old[1]) - int(old[0])
     index = '{}:{}'.format(int(old[0])+old_len, int(old[1])+old_len)
     next_walltime = int(walltime) + len_models*walltime_per_model_add
-    with open('cycle{}.sh'.format(cycle+1),'w') as rsh:
-        rsh.write(
-            '#!/bin/sh'
-            '\n\n#PBS -l walltime={:02d}:00:00'
-            '\n#PBS -l nodes=1:ppn=8:gpus=1'
-            '\n\nsource ~/.torchenv'
-            '\npython ../train.py {} {:02d} --traj-index {}'.format(next_walltime,cycle+1,next_walltime,index)
-        )
     if int(old[1])+old_len <= 30000:
+        with open('cycle{}.sh'.format(cycle+1),'w') as rsh:
+            rsh.write(
+                '#!/bin/sh'
+                '\n\n#PBS -l walltime={:02d}:00:00'
+                '\n#PBS -l nodes=1:ppn=8:gpus=1'
+                '\n\nsource ~/.torchenv'
+                '\npython ../train.py {} {:02d} --traj-index {}'.format(next_walltime,cycle+1,next_walltime,index)
+            )
         os.system('qsub cycle{}.sh -d $(pwd)'.format(cycle+1))
