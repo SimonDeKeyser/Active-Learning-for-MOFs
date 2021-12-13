@@ -139,7 +139,7 @@ class qbc_vis:
         plt.savefig(self.imgs_dir / 'train_f_mae', bbox_inches='tight')
         plt.close()
 
-    def evaluation(self):
+    def evaluation(self, combine = False):
         assert (self.head_dir / 'evaluation').exists(), 'The evaluation directory does not exist, do an evaluation first'
         eval_dir = self.head_dir / 'evaluation'
 
@@ -164,14 +164,23 @@ class qbc_vis:
                             all_f_mae[model].append(1000*float(value))
                         if metric == 'e_mae':
                             e_mae[model].append(1000*float(value))
-
-        for key in all_f_mae.keys():
-            plt.plot(self.cycle_names,all_f_mae[key],'.--',label=key)
-        plt.xlabel('QbC cycle')
-        plt.ylabel('Test Forces MAE [meV/$\AA$]')
-        plt.legend()
-        plt.savefig(self.imgs_dir / 'test_f_mae', bbox_inches='tight')
-        plt.close()
+        
+        if combine:
+            best = ''
+            mn = 100
+            for key in all_f_mae.keys():
+                if all_f_mae[key][-1] <= mn:
+                    best = key
+                    mn = all_f_mae[key][-1]
+            return all_f_mae[best]
+        else:
+            for key in all_f_mae.keys():
+                plt.plot(self.cycle_names,all_f_mae[key],'.--',label=key)
+            plt.xlabel('QbC cycle')
+            plt.ylabel('Test Forces MAE [meV/$\AA$]')
+            plt.legend()
+            plt.savefig(self.imgs_dir / 'test_f_mae', bbox_inches='tight')
+            plt.close()
 
 if __name__ == "__main__":
     head_dir = Path('../').resolve() / 'qbc_train'
