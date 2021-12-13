@@ -9,15 +9,16 @@ import torch
 logging.basicConfig(format='',level=logging.INFO)
 ##########################################################################################
 
-do_first = False
+do_first = True
 root = Path('../').resolve() 
 head_dir = root / 'qbc_train'
-test_dir = head_dir / 'trajectory.xyz'      
-index = '30000:34606'   
+test_dir = head_dir / 'open.xyz'      
+index = '0:5000'   
 walltime = '00:05:00'
 first_walltime = '01:00:00'
 batch_size = 5
-device = 'cuda'                                                                                                                
+device = 'cuda'    
+eval_name = 'eval_open'                                                                                                            
 
 ##########################################################################################
 logging.info('EVALUATION ON TEST SET:\n')
@@ -30,7 +31,7 @@ logging.info('Indices: [{}]'.format(index))
 p = head_dir.glob('*')
 cycles = sorted([x for x in p if (x.is_dir() and x.name[:5] == 'cycle')])
 
-evaluate_dir = head_dir / 'evaluation'
+evaluate_dir = head_dir / eval_name
 if not evaluate_dir.exists():
     evaluate_dir.mkdir()
 
