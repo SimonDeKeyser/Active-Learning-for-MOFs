@@ -9,11 +9,13 @@ import torch
 logging.basicConfig(format='',level=logging.INFO)
 ##########################################################################################
 
+do_first = True
 root = Path('../').resolve() 
 head_dir = root / 'qbc_train'
 test_dir = head_dir / 'trajectory.xyz'      
 index = '30000:34606'   
-walltime = '00:10:00'
+walltime = '00:05:00'
+first_walltime = '01:00:00'
 batch_size = 5
 device = 'cuda'                                                                                                                
 
@@ -62,7 +64,7 @@ def evaluate(nequip_train_dir):
     model_files = [x for x in p if x.is_dir()]
 
     for file in sorted(model_files):
-        if not file.name == 'processed':
+        if (not file.name == 'processed') and (not file == cycles[0] / 'results' / 'model0'):
             logging.info('\n###################################################################################################\n')
             logging.info('Starting evaluation of:\n')
             logging.info(file)
@@ -89,12 +91,49 @@ def evaluate(nequip_train_dir):
             os.system('module swap cluster/joltik; qsub {} -d $(pwd) -e {} -o {}'.format(hpc_run_dir / 'eval.sh', hpc_run_dir / 'error', hpc_run_dir / 'output'))
             logging.info('\t-{} submitted'.format(file.name))
 
-for cycle in cycles:
+def evaluate_first(cycle = cycles[0]):
     nequip_train_dir = cycle / 'results'
     assert nequip_train_dir.exists(), 'The NequIP training directory cannot be found'
+    file = nequip_train_dir / 'model0'
+    logging.info('\n###################################################################################################\n')
+    logging.info('Starting evaluation of:\n')
+    logging.info(file)
+    config = Config.from_file(str(file / 'config_final.yaml'))
 
     hpc_dir = evaluate_dir / cycle.name
     if not hpc_dir.exists():
         hpc_dir.mkdir()
 
-    evaluate(nequip_train_dir)
+    hpc_run_dir = hpc_dir / file.name
+    if not hpc_run_dir.exists():
+        hpc_run_dir.mkdir()
+
+    dataset_config = make_dataset_config(config, hpc_run_dir)
+    metrics_config = make_metrics_config(config, hpc_run_dir)
+
+    with open(hpc_run_dir / 'eval.sh','w') as rsh:
+        rsh.write(
+            '#!/bin/sh'
+            '\n\n#PBS -l walltime={}'
+            '\n#PBS -l nodes=1:ppn=8:gpus=1'
+            '\n\nsource ~/.torchenv'
+            '\nnequip-evaluate --train-dir {} --dataset-config {} '
+            '--metrics-config {} --batch-size {} --test-indexes {} '
+            '--device {}'.format(first_walltime, str(file), dataset_config, metrics_config, batch_size, test_index, device)
+        )
+    
+    os.system('module swap cluster/joltik; qsub {} -d $(pwd) -e {} -o {}'.format(hpc_run_dir / 'eval.sh', hpc_run_dir / 'error', hpc_run_dir / 'output'))
+    logging.info('\t-{} submitted'.format(file.name))
+
+if do_first:
+    evaluate_first()
+else:
+    for cycle in cycles:
+        nequip_train_dir = cycle / 'results'
+        assert nequip_train_dir.exists(), 'The NequIP training directory cannot be found'
+
+        hpc_dir = evaluate_dir / cycle.name
+        if not hpc_dir.exists():
+            hpc_dir.mkdir()
+
+        evaluate(nequip_train_dir)
