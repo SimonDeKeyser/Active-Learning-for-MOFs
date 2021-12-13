@@ -183,6 +183,24 @@ class qbc_vis:
             plt.savefig(self.imgs_dir / 'test_f_mae', bbox_inches='tight')
             plt.close()
 
+def plot_test(eval_dir):
+    thesis_dir = Path('../../').resolve()
+    mx = qbc_vis(thesis_dir / 'q4_max' / 'qbc_train', imgs_dir, eval_dir)
+    mean = qbc_vis(thesis_dir / 'q4' / 'qbc_train', imgs_dir, eval_dir)
+    random = qbc_vis(thesis_dir / 'q4_random' / 'qbc_train', imgs_dir, eval_dir)
+
+    mx_test = mx.evaluation(combine=True)
+    mean_test = mean.evaluation(combine=True)
+    random_test = random.evaluation(combine=True)
+
+    plt.plot(mx_test,'.--',label='max $\sigma$')
+    plt.plot(mean_test,'.--',label='mean $\sigma$')
+    plt.plot(random_test,'.--', label='random')
+    plt.ylabel('Forces MAE (test set) [meV/$\AA$]')
+    plt.xlabel('QbC cycle')
+    plt.legend()
+    plt.savefig(mean.imgs_dir / 'total_test', bbox_inches='tight')
+
 if __name__ == "__main__":
     head_dir = Path('../').resolve() / 'qbc_train'
     imgs_dir = 'qbc_imgs' 
@@ -191,18 +209,4 @@ if __name__ == "__main__":
     visual.epoch_metrics()
     visual.evaluation()
 
-    thesis_dir = Path('../../').resolve()
-    mx = qbc_vis(thesis_dir / 'q4_max' / 'qbc_train', imgs_dir)
-    mean = qbc_vis(thesis_dir / 'q4' / 'qbc_train', imgs_dir)
-
-    mx_test = mx.evaluation(combine=True)
-    mean_test = mean.evaluation(combine=True)
-    random_test = visual.evaluation(combine=True)
-
-    plt.plot(mx_test,'.--',label='max $\sigma$')
-    plt.plot(mean_test,'.--',label='mean $\sigma$')
-    plt.plot(random_test,'.--', label='random')
-    plt.ylabel('Forces MAE (test set) [meV/$\AA$]')
-    plt.xlabel('QbC cycle')
-    plt.legend()
-    plt.savefig(visual.imgs_dir / 'total_test', bbox_inches='tight')
+    plot_test('evaluation')
