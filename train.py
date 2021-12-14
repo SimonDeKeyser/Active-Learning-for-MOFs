@@ -7,6 +7,7 @@ import shutil
 import os 
 import random
 import argparse
+import datetime as dt
 
 import ase.io
 from nequip.utils import Config
@@ -24,7 +25,8 @@ parser.add_argument("walltime", help='The walltime for training the models (shou
 parser.add_argument("--traj-index", help="The indices of the trajectory to perform QbC on")
 args = parser.parse_args()
 cycle = int(args.cycle)
-walltime = args.walltime
+walltime = dt.datetime.strptime(args.walltime, "%H:%M:%S").time()
+walltime = dt.timedelta(hours=walltime.hour, minutes=walltime.minute, seconds=walltime.second)
 if args.traj_index:
     traj_index = args.traj_index
 else:
@@ -53,17 +55,18 @@ Parameters:
 root = Path('../../').resolve() # starting the run from /runs folder
 head_dir = root / 'qbc_train'
 traj_dir = head_dir / 'trajectory.xyz'                                                                                                                             
-n_select = 110
-n_val_0 = 10                                                                 
-n_val_add = 10
+n_select = 11
+n_val_0 = 1                                                                
+n_val_add = 1
 max_epochs = 50000   
 send_hpc_run = False                                                                 
-walltime_per_model_add = 1
+walltime_per_model_add = dt.timedelta(minutes=10)
 do_evaluation = True
 load_query_results = False
 prev_dataset_len = 1050
 prop = 'forces'
 red = 'mean'
+max_index = 5000
 
 ##########################################################################################
 logging.info('___ QUERY BY COMMITTEE ___\n')
@@ -155,7 +158,7 @@ if not hpc_dir.exists():
 
 if not send_hpc_run:
     elapsed_t = time.time()-start
-    left_t = int(walltime)*3600 - elapsed_t
+    left_t = walltime.seconds - elapsed_t
     logging.info('\n## {} hours left over of HPC walltime'.format(round(left_t/3600,3)))
     t_per_model = left_t/len_models
     logging.info('## Each of the {} models will train {} hours'.format(len_models,round(t_per_model/3600,3)))
@@ -164,10 +167,10 @@ def run_hpc(hpc_run_dir, train_dir, config_dir):
     with open(hpc_run_dir / 'run.sh','w') as rsh:
         rsh.write(
             '#!/bin/sh'
-            '\n\n#PBS -l walltime={}:00:00'
+            '\n\n#PBS -l walltime={}'
             '\n#PBS -l nodes=1:ppn=8:gpus=1'
             '\n\nsource ~/.torchenv'
-            '\npython ../restart.py {} --update-config {}'.format(walltime,train_dir,config_dir)
+            '\npython ../restart.py {} --update-config {}'.format(str(walltime),train_dir,config_dir)
         )
 
     os.system('qsub {} -d $(pwd) -e {} -o {}'.format(hpc_run_dir / 'run.sh', hpc_run_dir / 'error', hpc_run_dir / 'output'))
@@ -193,20 +196,20 @@ for file in sorted(model_files):
         else:
             os.system('timeout {} python ../restart.py {} --update-config {}'.format(t_per_model-3,train_dir,config_dir))
             logging.info('\n###################################################################################################')
-            logging.info('\nTotal elapsed time: {} hours of total {} hours'.format(round((time.time()-start)/3600,3),round(int(walltime),3)))
+            logging.info('\nTotal elapsed time: {} hours of total {} hours'.format(round((time.time()-start)/3600,3),round(walltime.seconds/3600,3)))
             
 if not send_hpc_run:
     old = traj_index.split(':')
     old_len = int(old[1]) - int(old[0])
     index = '{}:{}'.format(int(old[0])+old_len, int(old[1])+old_len)
-    next_walltime = int(walltime) + len_models*walltime_per_model_add
-    if int(old[1])+old_len <= 30000:
+    next_walltime = walltime + len_models*walltime_per_model_add
+    if int(old[1])+old_len <= max_index:
         with open('cycle{}.sh'.format(cycle+1),'w') as rsh:
             rsh.write(
                 '#!/bin/sh'
-                '\n\n#PBS -l walltime={:02d}:00:00'
+                '\n\n#PBS -l walltime={}'
                 '\n#PBS -l nodes=1:ppn=8:gpus=1'
                 '\n\nsource ~/.torchenv'
-                '\npython ../train.py {} {:02d} --traj-index {}'.format(next_walltime,cycle+1,next_walltime,index)
+                '\npython ../train.py {} {} --traj-index {}'.format(str(next_walltime),cycle+1,str(next_walltime),index)
             )
         os.system('qsub cycle{}.sh -d $(pwd)'.format(cycle+1))
