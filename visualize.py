@@ -1,3 +1,4 @@
+from os import read
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -6,12 +7,13 @@ import matplotlib.ticker as mticker
 
 
 class qbc_vis:
-    def __init__(self, head_dir:Path, imgs_dir:str) -> None:
+    def __init__(self, head_dir:Path, imgs_dir:str, eval_dir:str = 'evaluation') -> None:
         self.head_dir = head_dir
         self.imgs_dir = head_dir / imgs_dir
         if not self.imgs_dir.exists():
             self.imgs_dir.mkdir()
         self.list_cycles()
+        self.eval_dir = self.head_dir / eval_dir
     
     def list_cycles(self):
         p = self.head_dir.glob('*')
@@ -140,10 +142,9 @@ class qbc_vis:
         plt.close()
 
     def evaluation(self, combine = False):
-        assert (self.head_dir / 'evaluation').exists(), 'The evaluation directory does not exist, do an evaluation first'
-        eval_dir = self.head_dir / 'evaluation'
+        assert self.eval_dir.exists(), 'The evaluation directory does not exist, do an evaluation first'
 
-        p = (eval_dir / 'cycle0').glob('*')
+        p = (self.eval_dir / 'cycle0').glob('*')
         model_files = [x for x in p if (x.is_dir() and x.name[:5] == 'model')]
         model_names = [x.name for x in model_files]
 
@@ -154,7 +155,7 @@ class qbc_vis:
             e_mae[model] = [] 
         for cycle in self.cycle_names:
             for model in sorted(model_names):
-                f = open(eval_dir / cycle / model / 'output', 'r')
+                f = open(self.eval_dir / cycle / model / 'output', 'r')
                 lines = f.readlines()
                 for line in lines:
                     if '=' in line:
@@ -177,10 +178,28 @@ class qbc_vis:
             for key in all_f_mae.keys():
                 plt.plot(self.cycle_names,all_f_mae[key],'.--',label=key)
             plt.xlabel('QbC cycle')
-            plt.ylabel('Test Forces MAE [meV/$\AA$]')
+            plt.ylabel('Forces MAE (test set) [meV/$\AA$]')
             plt.legend()
             plt.savefig(self.imgs_dir / 'test_f_mae', bbox_inches='tight')
             plt.close()
+
+def plot_test(eval_dir):
+    thesis_dir = Path('../../').resolve()
+    mx = qbc_vis(thesis_dir / 'q4_max' / 'qbc_train', imgs_dir, eval_dir)
+    mean = qbc_vis(thesis_dir / 'q4' / 'qbc_train', imgs_dir, eval_dir)
+    random = qbc_vis(thesis_dir / 'q4_random' / 'qbc_train', imgs_dir, eval_dir)
+
+    mx_test = mx.evaluation(combine=True)
+    mean_test = mean.evaluation(combine=True)
+    random_test = random.evaluation(combine=True)
+
+    plt.plot(mx_test,'.--',label='max $\sigma$')
+    plt.plot(mean_test,'.--',label='mean $\sigma$')
+    plt.plot(random_test,'.--', label='random')
+    plt.ylabel('Forces MAE (test set) [meV/$\AA$]')
+    plt.xlabel('QbC cycle')
+    plt.legend()
+    plt.savefig(mean.imgs_dir / 'total_test', bbox_inches='tight')
 
 if __name__ == "__main__":
     head_dir = Path('../').resolve() / 'qbc_train'
@@ -189,3 +208,5 @@ if __name__ == "__main__":
     visual.mean_disagreement('forces','mean')
     visual.epoch_metrics()
     visual.evaluation()
+
+    plot_test('evaluation')
