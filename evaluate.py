@@ -9,7 +9,7 @@ import torch
 logging.basicConfig(format='',level=logging.INFO)
 ##########################################################################################
 
-do_first = True
+do_first = False
 root = Path('../').resolve() 
 head_dir = root / 'qbc_train'
 test_dir = head_dir / 'open.xyz'      

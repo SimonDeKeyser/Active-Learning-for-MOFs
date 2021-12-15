@@ -53,17 +53,17 @@ Parameters:
 root = Path('../../').resolve() # starting the run from /runs folder
 head_dir = root / 'qbc_train'
 traj_dir = head_dir / 'trajectory.xyz'                                                                                                                             
-n_select = 110
+n_select = 11
 n_val_0 = 10                                                                 
-n_val_add = 10
+n_val_add = 1
 max_epochs = 50000   
 send_hpc_run = False                                                                 
-walltime_per_model_add = 1
+walltime_per_model_add = 0
 do_evaluation = True
 load_query_results = False
 prev_dataset_len = 1050
-prop = 'forces'
-red = 'mean'
+prop = 'random'
+red = None
 
 ##########################################################################################
 logging.info('___ QUERY BY COMMITTEE ___\n')
