@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 from natsort import natsorted
 
-
 class qbc_vis:
     def __init__(self, head_dir:Path, imgs_dir:str, eval_dir:str = 'evaluation') -> None:
         self.head_dir = head_dir

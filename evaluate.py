@@ -2,6 +2,7 @@ from pathlib import Path
 import logging
 import os
 import pandas as pd
+from natsort import natsorted
 
 from nequip.utils import Config
 import torch
@@ -9,16 +10,16 @@ import torch
 logging.basicConfig(format='',level=logging.INFO)
 ##########################################################################################
 
-do_first = False
+do_first = True
 root = Path('../').resolve() 
 head_dir = root / 'qbc_train'
-test_dir = head_dir / 'open.xyz'      
-index = '0:5000'   
+test_dir = head_dir / 'trajectory.xyz'      
+index = '30000:34606'   
 walltime = '00:05:00'
 first_walltime = '00:05:00'
 batch_size = 5
 device = 'cuda'    
-eval_name = 'eval_open'                                                                                                            
+eval_name = 'evaluation'                                                                                                            
 
 ##########################################################################################
 logging.info('EVALUATION ON TEST SET:\n')
@@ -29,7 +30,8 @@ logging.info(str(test_dir))
 logging.info('Indices: [{}]'.format(index))
 
 p = head_dir.glob('*')
-cycles = sorted([x for x in p if (x.is_dir() and x.name[:5] == 'cycle')])
+cycle_names = natsorted([x.name for x in p if (x.is_dir() and x.name[:5] == 'cycle')])
+cycles = [(head_dir / name) for name in cycle_names]
 
 evaluate_dir = head_dir / eval_name
 if not evaluate_dir.exists():
