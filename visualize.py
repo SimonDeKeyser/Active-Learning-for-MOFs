@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
+from natsort import natsorted
 
 
 class qbc_vis:
@@ -17,9 +18,9 @@ class qbc_vis:
     
     def list_cycles(self):
         p = self.head_dir.glob('*')
-        self.cycles = sorted([x for x in p if (x.is_dir() and x.name[:5] == 'cycle')])
+        self.cycle_names = natsorted([x.name for x in p if (x.is_dir() and x.name[:5] == 'cycle')])
+        self.cycles = [(self.head_dir / name) for name in self.cycle_names]
         self.len_cycles = len(self.cycles)
-        self.cycle_names = sorted([x.name for x in self.cycles])
     
     def mean_disagreement(self, prop, red=None):
         mean_disagreements = np.zeros(self.len_cycles-1)
@@ -183,23 +184,16 @@ class qbc_vis:
             plt.savefig(self.imgs_dir / 'test_f_mae', bbox_inches='tight')
             plt.close()
 
-def plot_test(eval_dir):
+def plot_test(eval_dir, train_folders, labels):
     thesis_dir = Path('../../').resolve()
-    mx = qbc_vis(thesis_dir / 'q4_max' / 'qbc_train', imgs_dir, eval_dir)
-    mean = qbc_vis(thesis_dir / 'q4' / 'qbc_train', imgs_dir, eval_dir)
-    random = qbc_vis(thesis_dir / 'q4_random' / 'qbc_train', imgs_dir, eval_dir)
-
-    mx_test = mx.evaluation(combine=True)
-    mean_test = mean.evaluation(combine=True)
-    random_test = random.evaluation(combine=True)
-
-    plt.plot(mx_test,'.--',label='max $\sigma$')
-    plt.plot(mean_test,'.--',label='mean $\sigma$')
-    plt.plot(random_test,'.--', label='random')
+    for folder, i in enumerate(train_folders):
+        vis = qbc_vis(thesis_dir / folder, imgs_dir, eval_dir)
+        all_f_mae = vis.evaluation(combine=True)
+        plt.plot(all_f_mae,'.--',label=labels[i])
     plt.ylabel('Forces MAE (test set) [meV/$\AA$]')
     plt.xlabel('QbC cycle')
     plt.legend()
-    plt.savefig(mean.imgs_dir / 'total_test', bbox_inches='tight')
+    plt.savefig(vis.imgs_dir / 'total_test', bbox_inches='tight')
 
 if __name__ == "__main__":
     head_dir = Path('../').resolve() / 'qbc_train'
@@ -207,6 +201,6 @@ if __name__ == "__main__":
     visual = qbc_vis(head_dir, imgs_dir)
     visual.mean_disagreement('forces','mean')
     visual.epoch_metrics()
-    visual.evaluation()
+    #visual.evaluation()
 
-    plot_test('evaluation')
+    #plot_test('evaluation')
