@@ -21,7 +21,7 @@ class qbc_vis:
         self.cycles = [(self.head_dir / name) for name in self.cycle_names]
         self.len_cycles = len(self.cycles)
     
-    def mean_disagreement(self, prop, red=None):
+    def mean_disagreement(self, prop, red=None, combine=False):
         mean_disagreements = np.zeros(self.len_cycles-1)
         i = 0
         for cycle in self.cycles:
@@ -39,10 +39,14 @@ class qbc_vis:
                 assert ylabel, 'Give a valid property: [energy, forces] and/or reduction: [mean, max]'
                 mean_disagreements[i] = sigs.mean()
                 i += 1
-        plt.plot(self.cycle_names[:-1], 1000*mean_disagreements, '.k')
-        plt.ylabel(ylabel)
-        plt.savefig(self.imgs_dir / 'mean_disagreement', bbox_inches='tight')
-        plt.close()
+
+        if combine:
+            return 1000*mean_disagreements
+        else:
+            plt.plot(np.arange(self.len_cycles-1), 1000*mean_disagreements, '.k')
+            plt.ylabel(ylabel)
+            plt.savefig(self.imgs_dir / 'mean_disagreement', bbox_inches='tight')
+            plt.close()
 
     def best_mae_hour(self, metrics):
         clean_df = metrics[metrics[' wall'] != ' wall']
@@ -183,9 +187,29 @@ class qbc_vis:
             plt.savefig(self.imgs_dir / 'test_f_mae', bbox_inches='tight')
             plt.close()
 
-def plot_test(eval_dir, train_folders, labels):
+def combine_disagreement(train_folders, labels, prop, red=None):
+    if prop == 'energy':
+        ylabel = '<$\sigma_{E}$> [meV]'    
+    if prop == 'forces':
+        if red == 'mean':
+            ylabel = '<$\overline{\sigma_{\mathbf{F}}}$> [meV/$\AA$]'
+        if red == 'max':
+            ylabel = '<$max(\sigma_{\mathbf{F}})$> [meV/$\AA$]'
+
     thesis_dir = Path('../../').resolve()
-    for folder, i in enumerate(train_folders):
+    for i, folder in enumerate(train_folders):
+        vis = qbc_vis(thesis_dir / folder, imgs_dir)
+        disagreement = vis.mean_disagreement(prop, red, combine=True)
+        plt.plot(np.arange(vis.len_cycles - 1), disagreement,'.--',label=labels[i])
+    plt.ylabel(ylabel)
+    plt.xlabel('QbC cycle')
+    plt.legend()
+    plt.savefig(vis.imgs_dir / 'total_{}_{}_disagreement'.format(prop, red), bbox_inches='tight')
+    plt.close()
+
+def combine_test(eval_dir, train_folders, labels):
+    thesis_dir = Path('../../').resolve()
+    for i, folder in enumerate(train_folders):
         vis = qbc_vis(thesis_dir / folder, imgs_dir, eval_dir)
         all_f_mae = vis.evaluation(combine=True)
         plt.plot(all_f_mae,'.--',label=labels[i])
@@ -193,13 +217,32 @@ def plot_test(eval_dir, train_folders, labels):
     plt.xlabel('QbC cycle')
     plt.legend()
     plt.savefig(vis.imgs_dir / 'total_test', bbox_inches='tight')
+    plt.close()
 
 if __name__ == "__main__":
     head_dir = Path('../').resolve() / 'qbc_train'
     imgs_dir = 'qbc_imgs' 
     visual = qbc_vis(head_dir, imgs_dir)
-    visual.mean_disagreement('forces','mean')
-    visual.epoch_metrics()
+    #visual.mean_disagreement('forces','mean')
+    #visual.epoch_metrics()
     #visual.evaluation()
 
     #plot_test('evaluation')
+
+    train_folders = ['q4_mean10/qbc_train', 'q4_random10/qbc_train']
+    labels = ['mean', 'random']
+    prop = 'forces'
+    red = 'mean'
+    combine_disagreement(train_folders, labels, prop, red)
+
+    train_folders = ['q4/qbc_train', 'q4_max/qbc_train', 'q4_random/qbc_train']
+    labels = ['mean','max', 'random']
+    prop = 'forces'
+    red = 'mean'
+    combine_disagreement(train_folders, labels, prop, red)
+
+    train_folders = ['q4/qbc_train', 'q4_max/qbc_train', 'q4_random/qbc_train']
+    labels = ['mean','max', 'random']
+    prop = 'forces'
+    red = 'max'
+    combine_disagreement(train_folders, labels, prop, red)

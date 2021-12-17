@@ -31,7 +31,7 @@ Parameters:
 root = Path('../').resolve()
 head_dir = root / 'qbc_train'
 len_models = 4
-wandb_project = 'q4_mean10'
+wandb_project = 'q4_random10'
 n_train = 10
 n_val = 1
 walltime = '00:10:00'

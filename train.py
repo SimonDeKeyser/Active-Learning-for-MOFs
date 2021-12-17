@@ -64,8 +64,8 @@ walltime_per_model_add = dt.timedelta(minutes=10)
 do_evaluation = True
 load_query_results = False
 prev_dataset_len = 1050
-prop = 'forces'
-red = 'mean'
+prop = 'random'
+red = None
 max_index = 5000
 
 ##########################################################################################
