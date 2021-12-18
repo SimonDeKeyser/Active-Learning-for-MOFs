@@ -1,10 +1,39 @@
 from os import read
 from pathlib import Path
+
+from natsort import natsorted
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
-from natsort import natsorted
+from cycler import cycler
+plt.style.use('default')
+plt.rcParams['axes.prop_cycle'] = cycler(color= ['#0C5DA5', '#00B945', '#FF9500', '#FF2C00', '#845B97', '#474747', '#9e9e9e'])
+plt.rcParams['figure.figsize'] = [8, 6]
+plt.rcParams['xtick.labelsize'] = 16
+plt.rcParams['ytick.labelsize'] = 16
+plt.rcParams['axes.labelsize'] = 16
+plt.rcParams['legend.fontsize'] = 14
+plt.rcParams['xtick.direction'] = 'in'
+plt.rcParams['ytick.direction'] = 'in'
+plt.rcParams['xtick.major.size'] = 6
+plt.rcParams['xtick.major.width'] = 1
+plt.rcParams['xtick.minor.width'] = 1
+plt.rcParams['xtick.minor.size'] = 3
+plt.rcParams['ytick.major.size'] = 6
+plt.rcParams['ytick.minor.size'] = 3
+plt.rcParams['ytick.major.width'] = 1
+plt.rcParams['ytick.minor.width'] = 1
+plt.rcParams["legend.frameon"] = False
+plt.rcParams['grid.color'] = 'gray'
+plt.rcParams['grid.linestyle'] = '--'
+
+plt.rcParams['axes.linewidth'] = 1
+plt.rcParams['grid.linewidth'] = 1
+plt.rcParams['lines.linewidth'] = 2.
+
+plt.rcParams['font.family'] = 'sans-serif'
+plt.rcParams['mathtext.fontset'] = 'dejavusans'
 
 class qbc_vis:
     def __init__(self, head_dir:Path, imgs_dir:str, eval_dir:str = 'evaluation') -> None:
@@ -171,16 +200,15 @@ class qbc_vis:
                             e_mae[model].append(1000*float(value))
         
         if combine:
-            best = ''
-            mn = 100
+            values = np.zeros((len(all_f_mae),len(all_f_mae['model0'])))
+            i = 0
             for key in all_f_mae.keys():
-                if all_f_mae[key][-1] <= mn:
-                    best = key
-                    mn = all_f_mae[key][-1]
-            return all_f_mae[best]
+                values[i, :] = np.array(all_f_mae[key])
+                i += 1
+            return np.mean(values, axis=0), np.std(values, axis=0)
         else:
             for key in all_f_mae.keys():
-                plt.plot(self.cycle_names,all_f_mae[key],'.--',label=key)
+                plt.plot(all_f_mae[key],'.--',label=key)
             plt.xlabel('QbC cycle')
             plt.ylabel('Forces MAE (test set) [meV/$\AA$]')
             plt.legend()
@@ -207,14 +235,20 @@ def combine_disagreement(train_folders, labels, prop, red=None):
     plt.savefig(vis.imgs_dir / 'total_{}_{}_disagreement'.format(prop, red), bbox_inches='tight')
     plt.close()
 
-def combine_test(eval_dir, train_folders, labels):
+def combine_test(eval_dir, train_folders, labels, xticks = None):
     thesis_dir = Path('../../').resolve()
     for i, folder in enumerate(train_folders):
         vis = qbc_vis(thesis_dir / folder, imgs_dir, eval_dir)
-        all_f_mae = vis.evaluation(combine=True)
-        plt.plot(all_f_mae,'.--',label=labels[i])
+        all_f_mae, std = vis.evaluation(combine=True)
+        if xticks is not None:
+            x = xticks
+            xlabel = '# Training Points'
+        else:
+            x = np.arange(len(all_f_mae))
+            xlabel = 'QbC cycle'
+        plt.errorbar(x,all_f_mae,yerr=std,fmt='o--',label=labels[i],capsize=3)
     plt.ylabel('Forces MAE (test set) [meV/$\AA$]')
-    plt.xlabel('QbC cycle')
+    plt.xlabel(xlabel)
     plt.legend()
     plt.savefig(vis.imgs_dir / 'total_test', bbox_inches='tight')
     plt.close()
@@ -227,22 +261,21 @@ if __name__ == "__main__":
     #visual.epoch_metrics()
     #visual.evaluation()
 
-    #plot_test('evaluation')
-
     train_folders = ['q4_mean10/qbc_train', 'q4_random10/qbc_train']
-    labels = ['mean', 'random']
+    labels = ['$\overline{\sigma_{\mathbf{F}}}$', 'random']
+    xticks = np.arange(10,120,10)
+    combine_test('evaluation',train_folders, labels, xticks)
+
     prop = 'forces'
     red = 'mean'
-    combine_disagreement(train_folders, labels, prop, red)
+    #combine_disagreement(train_folders, labels, prop, red)
 
     train_folders = ['q4/qbc_train', 'q4_max/qbc_train', 'q4_random/qbc_train']
-    labels = ['mean','max', 'random']
-    prop = 'forces'
-    red = 'mean'
-    combine_disagreement(train_folders, labels, prop, red)
+    labels = ['$\overline{\sigma_{\mathbf{F}}}$','$max(\sigma_{\mathbf{F}})$', 'random']
+    xticks = np.arange(100,800,100)
+    combine_test('evaluation',train_folders, labels, xticks)
+    #combine_disagreement(train_folders, labels, prop, red)
 
-    train_folders = ['q4/qbc_train', 'q4_max/qbc_train', 'q4_random/qbc_train']
-    labels = ['mean','max', 'random']
     prop = 'forces'
     red = 'max'
-    combine_disagreement(train_folders, labels, prop, red)
+    #combine_disagreement(train_folders, labels, prop, red)
