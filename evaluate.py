@@ -8,6 +8,22 @@ from nequip.utils import Config
 import torch
 
 logging.basicConfig(format='',level=logging.INFO)
+
+'''
+Parameters:
+    - do_first                  If True, only the first model of the first cycle is evaluated; this is needed because the dataset is loaded from ase and saved as torch     
+    - head_dir                  Head directory for the QbC environment                           
+    - test_dir                  The path to the trajectory for evaulation
+    - index                     The index range of the trajectory to evaluate on
+    - walltime                  The walltime for evaluating each model
+    - first_walltime            The walltime for evaluating the first model (if do_first=True), longer because the dataset has to be loaded
+    - batch_size                The batch size for evaluation
+    - device                    The device to use; cuda or cpu
+    - eval_name                 The name of the evaluation folder
+    - cluster                   The HPC cluster to be used; joltik or accelgor
+    - env                       The virtual environment that is loaded before each job, together with some modules; torchenv or torchenv_stress_accelgor
+    - cores                     The number of HPC cores to be used in a job
+'''
 ##########################################################################################
 
 do_first = False
@@ -19,7 +35,10 @@ walltime = '00:05:00'
 first_walltime = '00:05:00'
 batch_size = 5
 device = 'cuda'    
-eval_name = 'evaluation'                                                                                                            
+eval_name = 'evaluation'
+cluster = 'accelgor'
+env = 'torchenv_stress_accelgor'
+cores = '12' # should be 12 when using accelgor                                                                                                            
 
 ##########################################################################################
 logging.info('EVALUATION ON TEST SET:\n')
@@ -67,7 +86,7 @@ def evaluate(nequip_train_dir):
     model_files = [x for x in p if x.is_dir()]
 
     for file in sorted(model_files):
-        if (not file.name == 'processed') and (not file == cycles[0] / 'results' / 'model0'):
+        if ('model' in file.name) and (not file == cycles[0] / 'results' / 'model0'):
             logging.info('\n###################################################################################################\n')
             logging.info('Starting evaluation of:\n')
             logging.info(file)
@@ -84,14 +103,14 @@ def evaluate(nequip_train_dir):
                 rsh.write(
                     '#!/bin/sh'
                     '\n\n#PBS -l walltime={}'
-                    '\n#PBS -l nodes=1:ppn=8:gpus=1'
-                    '\n\nsource ~/.torchenv'
+                    '\n#PBS -l nodes=1:ppn={}:gpus=1'
+                    '\n\nsource ~/.{}'
                     '\nnequip-evaluate --train-dir {} --dataset-config {} '
                     '--metrics-config {} --batch-size {} --test-indexes {} '
-                    '--device {}'.format(walltime, str(file), dataset_config, metrics_config, batch_size, test_index, device)
+                    '--device {}'.format(walltime, cores, env, str(file), dataset_config, metrics_config, batch_size, test_index, device)
                 )
             
-            os.system('module swap cluster/joltik; qsub {} -d $(pwd) -e {} -o {}'.format(hpc_run_dir / 'eval.sh', hpc_run_dir / 'error', hpc_run_dir / 'output'))
+            os.system('module swap cluster/{}; qsub {} -d $(pwd) -e {} -o {}'.format(cluster, hpc_run_dir / 'eval.sh', hpc_run_dir / 'error', hpc_run_dir / 'output'))
             logging.info('\t-{} submitted'.format(file.name))
 
 def evaluate_first(cycle = cycles[0]):
@@ -118,14 +137,14 @@ def evaluate_first(cycle = cycles[0]):
         rsh.write(
             '#!/bin/sh'
             '\n\n#PBS -l walltime={}'
-            '\n#PBS -l nodes=1:ppn=8:gpus=1'
-            '\n\nsource ~/.torchenv'
+            '\n#PBS -l nodes=1:ppn={}:gpus=1'
+            '\n\nsource ~/.{}'
             '\nnequip-evaluate --train-dir {} --dataset-config {} '
             '--metrics-config {} --batch-size {} --test-indexes {} '
-            '--device {}'.format(first_walltime, str(file), dataset_config, metrics_config, batch_size, test_index, device)
+            '--device {}'.format(first_walltime, cores, env, str(file), dataset_config, metrics_config, batch_size, test_index, device)
         )
     
-    os.system('module swap cluster/joltik; qsub {} -d $(pwd) -e {} -o {}'.format(hpc_run_dir / 'eval.sh', hpc_run_dir / 'error', hpc_run_dir / 'output'))
+    os.system('module swap cluster/{}; qsub {} -d $(pwd) -e {} -o {}'.format(cluster, hpc_run_dir / 'eval.sh', hpc_run_dir / 'error', hpc_run_dir / 'output'))
     logging.info('\t-{} submitted'.format(file.name))
 
 if do_first:

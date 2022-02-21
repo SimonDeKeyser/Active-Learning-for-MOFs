@@ -62,10 +62,10 @@ max_epochs = 50000
 send_hpc_run = False                                                                 
 walltime_per_model_add = dt.timedelta(minutes=10)
 do_evaluation = True
-load_query_results = True
+load_query_results = False
 prev_dataset_len = 1050
-prop = 'random'
-red = None
+prop = 'forces'
+red = 'mean'
 max_index = 3500
 cluster = 'accelgor'
 env = 'torchenv_stress_accelgor'
@@ -215,4 +215,4 @@ if not send_hpc_run:
                 '\n\nsource ~/.{}'
                 '\npython ../train.py {} {} --traj-index {}'.format(str(next_walltime), cores, env, cycle+1,str(next_walltime),index)
             )
-        #os.system('module swap cluster/{}; qsub cycle{}.sh -d $(pwd)'.format(cluster, cycle+1))
+        os.system('module swap cluster/{}; qsub cycle{}.sh -d $(pwd)'.format(cluster, cycle+1))
