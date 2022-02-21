@@ -1,10 +1,12 @@
 import logging
 import argparse
 
-from nequip.utils import Config, dataset_from_config, load_file
+from nequip.utils import Config, load_file
 import torch
+from nequip.scripts.train import _set_global_options
 from nequip.train.trainer_wandb import TrainerWandB
 from nequip.utils.wandb import resume
+from nequip.data import dataset_from_config
 
 logging.basicConfig(format='',level=logging.INFO)
 
@@ -43,15 +45,12 @@ def restart(file, config):
 
     config = Config(dictionary, exclude_keys=["state_dict", "progress"])
 
-    torch.set_default_dtype(
-        {"float32": torch.float32, "float64": torch.float64}[config.default_dtype]
-    )
+    _set_global_options(config)
+
     resume(config)
     trainer = TrainerWandB.from_dict(dictionary)
 
-    config.update(trainer.output.updated_dict())
-
-    dataset = dataset_from_config(config)
+    dataset = dataset_from_config(config, prefix='dataset')
     logging.info(f"Successfully reload the data set of type {dataset}...")
 
     trainer.set_dataset(dataset)

@@ -38,7 +38,8 @@ import numpy as np
 import ase.io
 import torch
 from nequip.scripts.deploy import load_deployed_model
-from nequip.data import AtomicData
+from nequip.data import AtomicData, dataset_from_config, Collater
+from nequip.train import Trainer
 
 @dataclass
 class qbc:
@@ -53,6 +54,7 @@ class qbc:
     n_select: int = 100
     nequip_train: bool = False
     r_max: float = 4.5
+    batch_size: int = 5
 
     def __post_init__(self):
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -76,14 +78,13 @@ class qbc:
         p = Path(self.models_dir).glob('*')
         if self.nequip_train:
             model_files = [x for x in p if x.is_dir()]
-            assert 'processed' in [f.name for f in model_files], 'The given models directory is not a NequIP training directory'
             logging.info('Models found in the NequIP training directory:')
             for file in sorted(model_files):
-                if not file.name == 'processed':
+                if 'model' in file.name:
                     logging.info('*\t{}'.format(file.name))
-                    path = file / 'best_model.pth'
-                    model = torch.load(path, map_location=self.device)
+                    model, self.config = Trainer.load_model_from_training_session(traindir=file)
                     model = model.to(self.device)
+                    model.eval()
                     self.models[file.name] = model  
         else:
             model_files = [x for x in p if x.is_file()]
@@ -101,19 +102,22 @@ class qbc:
     def load_traj(self):
         logging.info('Loading trajectory from ...: \n{}'.format(self.traj_dir))
         assert(self.traj_dir.suffix == '.xyz')
-        self.traj = ase.io.read(self.traj_dir, index=self.traj_index, format='extxyz')
+        self.config.dataset_file_name = str(self.traj_dir)
+        self.config.ase_args['index'] = self.traj_index
+        self.config.root = str(self.results_dir)
+        self.traj = dataset_from_config(self.config, prefix='dataset')
+        #self.traj = ase.io.read(self.traj_dir, index=self.traj_index, format='extxyz')
         self.traj_len = len(self.traj)
         logging.info('... Trajectory loaded\n')
 
-    def predict(self, atoms):
-        data = AtomicData.from_ase(atoms=atoms, r_max=self.r_max)
-        data = data.to(self.device)
-        energies = np.zeros(self.models_len)
-        forces = np.zeros((self.models_len,len(atoms),3))
+    def predict(self, batch):
+        batch = batch.to(self.device)
+        energies = np.zeros((self.models_len, self.batch_size))
+        forces = np.zeros((self.models_len,batch['forces'].shape[0],3))
         j = 0
         for model in self.models.values():
-            out = model(AtomicData.to_AtomicDataDict(data))
-            energies[j] = out['total_energy'].detach().cpu().item()
+            out = model(AtomicData.to_AtomicDataDict(batch))
+            energies[j,:] = out['total_energy'].detach().cpu().numpy().flatten()
             forces[j,:,:] = out['forces'].detach().cpu().numpy()
             j += 1
             
@@ -123,25 +127,40 @@ class qbc:
         mean = np.mean(pred, axis=0)
         std = np.std(pred, axis=0)
         if prop == 'forces':
+            n_atoms = mean.shape[0]//self.batch_size
             if red == 'mean':
-                mean = np.mean(abs(mean),axis=(0,1))
-                std = np.mean(std,axis=(0,1))
+                mean = [np.mean(abs(mean[batch_i* n_atoms: (batch_i + 1)* n_atoms, :]),axis=(0,1)) for batch_i in range(self.batch_size)]
+                std = [np.mean(std[batch_i* n_atoms: (batch_i + 1)* n_atoms, :],axis=(0,1)) for batch_i in range(self.batch_size)]
             if red == 'max':
-                mean = np.max(abs(mean),axis=(0,1))
-                std = np.max(std,axis=(0,1))
+                mean = [np.max(abs(mean[batch_i* n_atoms: (batch_i + 1)* n_atoms, :]),axis=(0,1)) for batch_i in range(self.batch_size)]
+                std = [np.max(std[batch_i* n_atoms: (batch_i + 1)* n_atoms, :],axis=(0,1)) for batch_i in range(self.batch_size)]
         
-        return mean, std
+        return np.array(mean), np.array(std)
 
     def evaluate_committee(self, save=False):
         logging.info('Starting evaluation ...')
-        for i in range(self.traj_len):
-            self.traj_e[i] = self.traj[i].get_potential_energy()
-            energies, forces = self.predict(self.traj[i])
-            self.mean_e[i], self.sig_e[i] = self.disagreement(energies, 'energy')
-            self.mean_f_mean[i], self.sig_f_mean[i] = self.disagreement(forces, 'forces', 'mean')
-            self.mean_f_max[i], self.sig_f_max[i] = self.disagreement(forces, 'forces', 'max')
-            if (i%10) == 0:
-                logging.info('[{}/{}]'.format(i,self.traj_len))
+        c = Collater.for_dataset(self.traj, exclude_keys=[])
+        test_idcs = np.arange(self.traj_len)
+        batch_i = 0
+        while True:
+            this_batch_test_indexes = test_idcs[
+                batch_i * self.batch_size : (batch_i + 1) * self.batch_size
+            ]
+            datas = [self.traj[int(idex)] for idex in this_batch_test_indexes]
+            if len(datas) == 0:
+                break
+            batch = c.collate(datas)
+            batch = batch.to(self.device)
+
+            self.traj_e[this_batch_test_indexes] = batch['total_energy'].cpu().numpy().flatten()
+            energies, forces = self.predict(batch)
+            
+            self.mean_e[this_batch_test_indexes], self.sig_e[this_batch_test_indexes] = self.disagreement(energies, 'energy')
+            self.mean_f_mean[this_batch_test_indexes], self.sig_f_mean[this_batch_test_indexes] = self.disagreement(forces, 'forces', 'mean')
+            self.mean_f_max[this_batch_test_indexes], self.sig_f_max[this_batch_test_indexes] = self.disagreement(forces, 'forces', 'max')
+            logging.info('[{}/{}]'.format(batch_i,self.traj_len//self.batch_size))
+            batch_i += 1
+            
         logging.info('... Evaluation finished\n')
         if save:
             self.save()
@@ -162,7 +181,9 @@ class qbc:
         else:
             ind = random.sample(range(len(self.traj)),self.n_select)
         assert ind is not None, 'No valid disagreement metric was given'
-        selected_data = [self.traj[i] for i in ind]
+        selected_data = [self.traj[i].to(device="cpu").to_ase(
+                                type_mapper=self.traj.type_mapper)
+                        for i in ind]
         self.ind = ind
         return selected_data
 

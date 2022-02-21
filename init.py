@@ -31,10 +31,13 @@ Parameters:
 root = Path('../').resolve()
 head_dir = root / 'qbc_train'
 len_models = 4
-wandb_project = 'q4_random10'
+wandb_project = 'q4_random10_md'
 n_train = 10
 n_val = 1
 walltime = '00:10:00'
+cluster = 'accelgor'
+env = 'torchenv_stress_accelgor'
+cores = '12' # should be 12 when using accelgor
 
 ##########################################################################################
 
@@ -95,9 +98,9 @@ def make_train_scripts():
             rsh.write(
                 '#!/bin/sh'
                 '\n\n#PBS -l walltime={}'
-                '\n#PBS -l nodes=1:ppn=8:gpus=1'
-                '\n\nsource ~/.torchenv'
-                '\nnequip-train {}'.format(walltime,str(conf_dir / 'config{}.yaml'.format(i)))
+                '\n#PBS -l nodes=1:ppn={}:gpus=1'
+                '\n\nsource ~/.{}'
+                '\nnequip-train {}'.format(walltime, cores, env,str(conf_dir / 'config{}.yaml'.format(i)))
             )
     logging.info('\t-Done!')
     return hpc_dir
@@ -106,7 +109,7 @@ def start_training():
     logging.info('#Starting the training ...\n')
     for i in range(len_models):
         file = hpc_dir / 'model{}'.format(i)
-        os.system('module swap cluster/joltik; qsub {} -d $(pwd) -e {} -o {}'.format(file / 'train.sh', file / 'error', file / 'output'))
+        os.system('module swap cluster/{}; qsub {} -d $(pwd) -e {} -o {}'.format(cluster, file / 'train.sh', file / 'error', file / 'output'))
         logging.info('\t-model{} submitted'.format(i))
 
 cycle_dir, conf_dir = check_init_state()

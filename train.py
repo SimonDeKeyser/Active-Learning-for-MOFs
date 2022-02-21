@@ -54,7 +54,7 @@ Parameters:
 
 root = Path('../../').resolve() # starting the run from /runs folder
 head_dir = root / 'qbc_train'
-traj_dir = head_dir / 'trajectory.xyz'                                                                                                                             
+traj_dir = head_dir / 'MD_304_traj.xyz'                                                                                                                             
 n_select = 11
 n_val_0 = 1                                                                
 n_val_add = 1
@@ -62,11 +62,14 @@ max_epochs = 50000
 send_hpc_run = False                                                                 
 walltime_per_model_add = dt.timedelta(minutes=10)
 do_evaluation = True
-load_query_results = False
+load_query_results = True
 prev_dataset_len = 1050
 prop = 'random'
 red = None
-max_index = 5000
+max_index = 3500
+cluster = 'accelgor'
+env = 'torchenv_stress_accelgor'
+cores = '12' # should be 12 when using accelgor
 
 ##########################################################################################
 logging.info('___ QUERY BY COMMITTEE ___\n')
@@ -127,7 +130,7 @@ model_files = [x for x in p if x.is_dir()]
 
 len_models = 0
 for file in sorted(model_files):
-    if not file.name == 'processed':
+    if 'model' in file.name:
         len_models += 1
         if not (nequip_train_dir / file.name).exists():
             shutil.copytree(file, nequip_train_dir / file.name)
@@ -168,18 +171,18 @@ def run_hpc(hpc_run_dir, train_dir, config_dir):
         rsh.write(
             '#!/bin/sh'
             '\n\n#PBS -l walltime={}'
-            '\n#PBS -l nodes=1:ppn=8:gpus=1'
-            '\n\nsource ~/.torchenv'
-            '\npython ../restart.py {} --update-config {}'.format(str(walltime),train_dir,config_dir)
+            '\n#PBS -l nodes=1:ppn={}:gpus=1'
+            '\n\nsource ~/.{}'
+            '\npython ../restart.py {} --update-config {}'.format(str(walltime),cores, env, train_dir,config_dir)
         )
 
-    os.system('qsub {} -d $(pwd) -e {} -o {}'.format(hpc_run_dir / 'run.sh', hpc_run_dir / 'error', hpc_run_dir / 'output'))
+    os.system('module swap cluster/{}; qsub {} -d $(pwd) -e {} -o {}'.format(cluster, hpc_run_dir / 'run.sh', hpc_run_dir / 'error', hpc_run_dir / 'output'))
 
 p = Path(nequip_train_dir).glob('*')
 model_files = [x for x in p if x.is_dir()]
 
 for file in sorted(model_files):
-    if not file.name == 'processed':
+    if 'model' in file.name:
         logging.info('\n###################################################################################################\n')
         logging.info('Starting retraining of {}\n'.format(file.name))
         config = make_config()
@@ -208,8 +211,8 @@ if not send_hpc_run:
             rsh.write(
                 '#!/bin/sh'
                 '\n\n#PBS -l walltime={}'
-                '\n#PBS -l nodes=1:ppn=8:gpus=1'
-                '\n\nsource ~/.torchenv'
-                '\npython ../train.py {} {} --traj-index {}'.format(str(next_walltime),cycle+1,str(next_walltime),index)
+                '\n#PBS -l nodes=1:ppn={}:gpus=1'
+                '\n\nsource ~/.{}'
+                '\npython ../train.py {} {} --traj-index {}'.format(str(next_walltime), cores, env, cycle+1,str(next_walltime),index)
             )
-        os.system('qsub cycle{}.sh -d $(pwd)'.format(cycle+1))
+        #os.system('module swap cluster/{}; qsub cycle{}.sh -d $(pwd)'.format(cluster, cycle+1))
