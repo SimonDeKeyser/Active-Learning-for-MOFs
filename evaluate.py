@@ -29,8 +29,8 @@ Parameters:
 do_first = False
 root = Path('../').resolve() 
 head_dir = root / 'qbc_train'
-test_dir = head_dir / 'trajectory.xyz'      
-index = '30000:34606'   
+test_dir = head_dir / 'MD_304_traj.xyz'      
+index = '3500:3892'   
 walltime = '00:05:00'
 first_walltime = '00:05:00'
 batch_size = 5
@@ -57,6 +57,7 @@ if not evaluate_dir.exists():
     evaluate_dir.mkdir()
 
 index_list = index.split(':')
+assert index_list[1] != '', 'Give 2 indices as input for index, e.g.: "3500:3900"'
 indices = torch.arange(int(index_list[0]), int(index_list[1]))
 test_index = evaluate_dir / 'test_indexes.pt'
 torch.save(indices, test_index)
