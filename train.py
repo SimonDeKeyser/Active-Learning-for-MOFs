@@ -1,3 +1,4 @@
+from distutils.log import set_verbosity
 import time
 start = time.time()
 
@@ -23,6 +24,7 @@ parser.add_argument("walltime", help='The walltime for training the models (shou
                                     'If send_hpc_run = True: the walltime given to each model training session'
                                     'If send_hpc_run = False: the total walltime for training all models sequentially')
 parser.add_argument("--traj-index", help="The indices of the trajectory to perform QbC on")
+parser.add_argument("--cp2k-restart", help="True: cp2k calculation done, restart training")
 args = parser.parse_args()
 cycle = int(args.cycle)
 walltime = dt.datetime.strptime(args.walltime, "%H:%M:%S").time()
@@ -31,6 +33,10 @@ if args.traj_index:
     traj_index = args.traj_index
 else:
     traj_index = ':'
+if args.cp2k_restart is None:
+    cp2k_restart = False
+else:
+    cp2k_restart = args.cp2k_restart
 
 '''
 Parameters:
@@ -43,12 +49,13 @@ Parameters:
     - send_hpc_run              True: train each model seperately by performing a HPC bash command for each
                                 False: train each model in one HPC bash command, sequentially
     - walltime_per_model_add    The walltime added per model in each cycle because the dataset increases
-    - do_evaluation             True: do the query by committee
-                                False: only possible if the new dataset is already saved as data.xyz in the current cycle folder
     - load_query_results        True: if do_evaluation = True then the disagreement results will be loaded if saved previously
     - prev_dataset_len          Length of the previous dataset, only has to be given if do_query = False
     - prop                      The property to be used in the disagreement metric, choose from: energy, forces, random
     - red                       In the case of prop = forces, choose the reduction from: mean, max
+    - cluster                   The HPC cluster to be used; joltik or accelgor
+    - env                       The virtual environment that is loaded before each job, together with some modules; torchenv or torchenv_stress_accelgor
+    - cores                     The number of HPC cores to be used in a job
 '''
 ##########################################################################################
 
@@ -61,7 +68,6 @@ n_val_add = 1
 max_epochs = 50000   
 send_hpc_run = False                                                                 
 walltime_per_model_add = dt.timedelta(minutes=10)
-do_evaluation = True
 load_query_results = False
 prev_dataset_len = 1050
 prop = 'forces'
@@ -70,6 +76,9 @@ max_index = 3500
 cluster = 'accelgor'
 env = 'torchenv_stress_accelgor'
 cores = '12' # should be 12 when using accelgor
+cp2k = True
+cp2k_cores = 24
+cp2k_walltime = '01:00:00'
 
 ##########################################################################################
 logging.info('___ QUERY BY COMMITTEE ___\n')
@@ -88,6 +97,8 @@ assert prev_dataset_dir.exists(), 'Previous training dataset directory does not 
 name = 'cycle{}'.format(cycle)
 cycle_dir = head_dir / name
 dataset_dir = cycle_dir / 'data.xyz'
+input_dir = cycle_dir / 'new_data.xyz'
+output_dir = cycle_dir / 'calc_data.xyz'
 
 def evaluate_committee(load):
     committee = qbc(name=name, models_dir=prev_nequip_train_dir, 
@@ -103,6 +114,28 @@ def evaluate_committee(load):
 
     new_datapoints = committee.select_data(prop=prop, red=red)
     committee.plot_traj_disagreement()
+
+    if cp2k:
+        ase.io.write(input_dir, new_datapoints, format='extxyz')
+        if not Path('cycle{}_cp2k'.format(cycle)).exists():
+            Path('cycle{}_cp2k'.format(cycle)).mkdir()
+        cp2k_dir = Path('cycle{}_cp2k'.format(cycle))
+        with open('cycle{}_cp2k/job.sh'.format(cycle),'w') as rsh:
+            rsh.write(
+                '#!/bin/sh'
+                '\n\n#PBS -o output.txt'
+                '\n#PBS -e error.txt'
+                '\n#PBS -l walltime={}'
+                '\n#PBS -l nodes=1:ppn={}'
+                '\n\nsource ~/.cp2kenv'
+                '\npython ../../cp2k_main.py {} {} {}'.format(cp2k_walltime, cp2k_cores, str(input_dir), str(output_dir), cp2k_cores)
+            )
+        os.system('module swap cluster/doduo; cd {}; qsub job.sh -d $(pwd)'.format(cp2k_dir))
+    else:  
+        ase.io.write(output_dir, new_datapoints, format='extxyz')
+
+def restart_training():
+    new_datapoints = ase.io.read(output_dir, index = ':', format='extxyz')
     prev_dataset = ase.io.read(prev_dataset_dir,format='extxyz',index=':')
     assert n_val_add < n_select, 'No training points added but only validation points'
     len_train_add = n_select - n_val_add
@@ -113,95 +146,89 @@ def evaluate_committee(load):
     ase.io.write(dataset_dir,new_dataset,format='extxyz')
     logging.info('Saved the new dataset of length {}'.format(len(new_dataset)))
 
-    return dataset_len
+    assert dataset_dir.exists(), 'The dataset was not saved yet, do_query first'
+    nequip_train_dir = cycle_dir / 'results'
+    if not nequip_train_dir.exists():
+        nequip_train_dir.mkdir()
 
-if do_evaluation:
-    dataset_len = evaluate_committee(load_query_results)
-else:
-    dataset_len = prev_dataset_len + n_select
+    p = Path(prev_nequip_train_dir).glob('*')
+    model_files = [x for x in p if x.is_dir()]
 
-assert dataset_dir.exists(), 'The dataset was not saved yet, do_query first'
-nequip_train_dir = cycle_dir / 'results'
-if not nequip_train_dir.exists():
-    nequip_train_dir.mkdir()
+    len_models = 0
+    for file in sorted(model_files):
+        if 'model' in file.name:
+            len_models += 1
+            if not (nequip_train_dir / file.name).exists():
+                shutil.copytree(file, nequip_train_dir / file.name)
+                logging.info('Copying NequIP train folder of {}'.format(file.name))
 
-p = Path(prev_nequip_train_dir).glob('*')
-model_files = [x for x in p if x.is_dir()]
+    def make_config():
+        config = Config()
 
-len_models = 0
-for file in sorted(model_files):
-    if 'model' in file.name:
-        len_models += 1
-        if not (nequip_train_dir / file.name).exists():
-            shutil.copytree(file, nequip_train_dir / file.name)
-            logging.info('Copying NequIP train folder of {}'.format(file.name))
+        config.root = str(nequip_train_dir)
+        config.restart = True
+        config.append = True
 
-def make_config():
-    config = Config()
+        config.dataset_file_name = str(dataset_dir)
 
-    config.root = str(nequip_train_dir)
-    config.restart = True
-    config.append = True
+        config.wandb_resume = True
 
-    config.dataset_file_name = str(dataset_dir)
+        config.n_train = dataset_len - n_val_0 - cycle*n_val_add
+        config.n_val = n_val_0 + cycle*n_val_add
 
-    config.wandb_resume = True
+        config.max_epochs = max_epochs
+        config.lr_scheduler_name = 'none'
 
-    config.n_train = dataset_len - n_val_0 - cycle*n_val_add
-    config.n_val = n_val_0 + cycle*n_val_add
+        return config
 
-    config.max_epochs = max_epochs
-    config.lr_scheduler_name = 'none'
+    hpc_dir = cycle_dir / 'hpc'
+    if not hpc_dir.exists():
+        hpc_dir.mkdir()
 
-    return config
+    if not send_hpc_run:
+        elapsed_t = time.time()-start
+        left_t = walltime.seconds - elapsed_t
+        logging.info('\n## {} hours left over of HPC walltime'.format(round(left_t/3600,3)))
+        t_per_model = left_t/len_models
+        logging.info('## Each of the {} models will train {} hours'.format(len_models,round(t_per_model/3600,3)))
 
-hpc_dir = cycle_dir / 'hpc'
-if not hpc_dir.exists():
-    hpc_dir.mkdir()
+    def run_hpc(hpc_run_dir, train_dir, config_dir):
+        with open(hpc_run_dir / 'run.sh','w') as rsh:
+            rsh.write(
+                '#!/bin/sh'
+                '\n\n#PBS -l walltime={}'
+                '\n#PBS -l nodes=1:ppn={}:gpus=1'
+                '\n\nsource ~/.{}'
+                '\npython ../restart.py {} --update-config {}'.format(str(walltime),cores, env, train_dir,config_dir)
+            )
 
-if not send_hpc_run:
-    elapsed_t = time.time()-start
-    left_t = walltime.seconds - elapsed_t
-    logging.info('\n## {} hours left over of HPC walltime'.format(round(left_t/3600,3)))
-    t_per_model = left_t/len_models
-    logging.info('## Each of the {} models will train {} hours'.format(len_models,round(t_per_model/3600,3)))
+        os.system('module swap cluster/{}; qsub {} -d $(pwd) -e {} -o {}'.format(cluster, hpc_run_dir / 'run.sh', hpc_run_dir / 'error', hpc_run_dir / 'output'))
 
-def run_hpc(hpc_run_dir, train_dir, config_dir):
-    with open(hpc_run_dir / 'run.sh','w') as rsh:
-        rsh.write(
-            '#!/bin/sh'
-            '\n\n#PBS -l walltime={}'
-            '\n#PBS -l nodes=1:ppn={}:gpus=1'
-            '\n\nsource ~/.{}'
-            '\npython ../restart.py {} --update-config {}'.format(str(walltime),cores, env, train_dir,config_dir)
-        )
+    p = Path(nequip_train_dir).glob('*')
+    model_files = [x for x in p if x.is_dir()]
 
-    os.system('module swap cluster/{}; qsub {} -d $(pwd) -e {} -o {}'.format(cluster, hpc_run_dir / 'run.sh', hpc_run_dir / 'error', hpc_run_dir / 'output'))
+    for file in sorted(model_files):
+        if 'model' in file.name:
+            logging.info('\n###################################################################################################\n')
+            logging.info('Starting retraining of {}\n'.format(file.name))
+            config = make_config()
 
-p = Path(nequip_train_dir).glob('*')
-model_files = [x for x in p if x.is_dir()]
+            hpc_run_dir = hpc_dir / file.name
+            if not hpc_run_dir.exists():
+                hpc_run_dir.mkdir()
+            config.save(str(hpc_run_dir / 'updated_config.yaml'),'yaml')
+            config_dir = str(hpc_run_dir / 'updated_config.yaml')
+            train_dir = str(file)
 
-for file in sorted(model_files):
-    if 'model' in file.name:
-        logging.info('\n###################################################################################################\n')
-        logging.info('Starting retraining of {}\n'.format(file.name))
-        config = make_config()
-
-        hpc_run_dir = hpc_dir / file.name
-        if not hpc_run_dir.exists():
-            hpc_run_dir.mkdir()
-        config.save(str(hpc_run_dir / 'updated_config.yaml'),'yaml')
-        config_dir = str(hpc_run_dir / 'updated_config.yaml')
-        train_dir = str(file)
-
-        if send_hpc_run:
-            run_hpc(hpc_run_dir, train_dir, config_dir)
-        else:
-            os.system('timeout {} python ../restart.py {} --update-config {}'.format(t_per_model-3,train_dir,config_dir))
-            logging.info('\n###################################################################################################')
-            logging.info('\nTotal elapsed time: {} hours of total {} hours'.format(round((time.time()-start)/3600,3),round(walltime.seconds/3600,3)))
-            
-if not send_hpc_run:
+            if send_hpc_run:
+                run_hpc(hpc_run_dir, train_dir, config_dir)
+            else:
+                os.system('timeout {} python ../restart.py {} --update-config {}'.format(t_per_model-3,train_dir,config_dir))
+                logging.info('\n###################################################################################################')
+                logging.info('\nTotal elapsed time: {} hours of total {} hours'.format(round((time.time()-start)/3600,3),round(walltime.seconds/3600,3)))
+    return len_models
+                
+def start_next_cyle():
     old = traj_index.split(':')
     old_len = int(old[1]) - int(old[0])
     index = '{}:{}'.format(int(old[0])+old_len, int(old[1])+old_len)
@@ -216,3 +243,13 @@ if not send_hpc_run:
                 '\npython ../train.py {} {} --traj-index {}'.format(str(next_walltime), cores, env, cycle+1,str(next_walltime),index)
             )
         os.system('module swap cluster/{}; qsub cycle{}.sh -d $(pwd)'.format(cluster, cycle+1))
+
+if cp2k_restart:
+    _ = restart_training()
+elif (not cp2k_restart) and cp2k:
+    evaluate_committee()
+else:
+    evaluate_committee()
+    len_models = restart_training()
+    if not send_hpc_run:
+        start_next_cyle()

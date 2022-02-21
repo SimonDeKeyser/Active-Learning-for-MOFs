@@ -1,4 +1,6 @@
 from pathlib import Path
+import argparse
+import os
 
 import ase
 from ase.io import read, write
@@ -100,12 +102,21 @@ additional_input = '''
  &END FORCE_EVAL
         '''.format(path_basis, path_potentials, path_dispersion)
 
-atoms = read(Path.cwd() / 'chunk.xyz')
+parser = argparse.ArgumentParser(
+        description="Calculate new datapoints."
+    )
+parser.add_argument("input-dir", help="Path to .xyz file to be calculated")
+parser.add_argument("output-dir", help="Path where the calculated .xyz file should be written to")
+parser.add_argument("cores", help="Amount of cores in HPC job")
+parser.add_argument("cycle_restart", help="Path to a .json file containing the QbC restart parameters")
+args = parser.parse_args()
+
+atoms = read(args.input_dir)
 calculator = CP2K(
         atoms=atoms,
         auto_write=True,
         basis_set=None,
-        command='mpirun -np 24 cp2k_shell.psmp',
+        command='mpirun -np {} cp2k_shell.psmp'.format(args.cores),
         cutoff=1000 * ase.units.Rydberg,
         stress_tensor=True,
         uks=False,
@@ -119,3 +130,28 @@ calculator = CP2K(
         potential_file=None,    # disable
         )
 atoms.calc = calculator
+
+with open(args.input_dir,'r') as f:
+    chunk = list(read(f, index=':'))
+
+for state in chunk:
+    state.calc = None
+    atoms.set_positions(state.get_positions())
+    atoms.set_cell(state.get_cell())
+    state.arrays['forces'] = atoms.get_forces()
+    state.info['stress'] = voigt_6_to_full_3x3_stress(atoms.get_stress())
+    state.info['energy'] = atoms.get_potential_energy()
+    break
+
+with open(args.output_dir, 'w') as f:
+    write_extxyz(f, chunk)
+
+with open('cycle{}_restart.sh'.format(cycle),'w') as rsh:
+    rsh.write(
+        '#!/bin/sh'
+        '\n\n#PBS -l walltime={}'
+        '\n#PBS -l nodes=1:ppn={}:gpus=1'
+        '\n\nsource ~/.{}'
+        '\npython ../train.py {} {} --traj-index {}'.format(str(walltime), cores, env, cycle,str(next_walltime),index)
+    )
+os.system('module swap cluster/{}; qsub cycle{}.sh -d $(pwd)'.format(cluster, cycle))
