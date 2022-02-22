@@ -2,6 +2,7 @@ from pathlib import Path
 import argparse
 import os
 
+from nequip.utils import Config
 import ase
 from ase.io import read, write
 from ase.io.extxyz import write_extxyz
@@ -108,7 +109,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument("input-dir", help="Path to .xyz file to be calculated")
 parser.add_argument("output-dir", help="Path where the calculated .xyz file should be written to")
 parser.add_argument("cores", help="Amount of cores in HPC job")
-parser.add_argument("cycle_restart", help="Path to a .json file containing the QbC restart parameters")
+parser.add_argument("restart_conf", help="Path to a .json file containing the QbC restart parameters")
 args = parser.parse_args()
 
 atoms = read(args.input_dir)
@@ -146,12 +147,14 @@ for state in chunk:
 with open(args.output_dir, 'w') as f:
     write_extxyz(f, chunk)
 
-with open('cycle{}_restart.sh'.format(cycle),'w') as rsh:
+config = Config.from_file(args.restart_conf)
+
+with open('cycle{}_restart.sh'.format(config.cycle),'w') as rsh:
     rsh.write(
         '#!/bin/sh'
         '\n\n#PBS -l walltime={}'
         '\n#PBS -l nodes=1:ppn={}:gpus=1'
         '\n\nsource ~/.{}'
-        '\npython ../train.py {} {} --traj-index {}'.format(str(walltime), cores, env, cycle,str(next_walltime),index)
+        '\npython ../train.py {} {} --traj-index {} --cp2k-restart {}'.format(config.walltime, config.cores, config.env, config.cycle, config.walltime, config.traj_index, True)
     )
-os.system('module swap cluster/{}; qsub cycle{}.sh -d $(pwd)'.format(cluster, cycle))
+os.system('module swap cluster/{}; qsub cycle{}_restart.sh -d $(pwd)'.format(config.cluster, config.cycle))

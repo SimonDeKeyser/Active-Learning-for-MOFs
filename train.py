@@ -56,6 +56,9 @@ Parameters:
     - cluster                   The HPC cluster to be used; joltik or accelgor
     - env                       The virtual environment that is loaded before each job, together with some modules; torchenv or torchenv_stress_accelgor
     - cores                     The number of HPC cores to be used in a job
+    - cp2k                      If True, newly selected datapoints are calculated with cp2k
+    - cp2k_cores                The amount of cores used in the cp2K job
+    - cp2k_walltime             The walltime the cp2k can use for calculating all new datapoints in a cycle
 '''
 ##########################################################################################
 
@@ -120,6 +123,7 @@ def evaluate_committee(load):
         if not Path('cycle{}_cp2k'.format(cycle)).exists():
             Path('cycle{}_cp2k'.format(cycle)).mkdir()
         cp2k_dir = Path('cycle{}_cp2k'.format(cycle))
+        restart_conf = cp2k_dir / 'restart.yaml'
         with open('cycle{}_cp2k/job.sh'.format(cycle),'w') as rsh:
             rsh.write(
                 '#!/bin/sh'
@@ -128,8 +132,17 @@ def evaluate_committee(load):
                 '\n#PBS -l walltime={}'
                 '\n#PBS -l nodes=1:ppn={}'
                 '\n\nsource ~/.cp2kenv'
-                '\npython ../../cp2k_main.py {} {} {}'.format(cp2k_walltime, cp2k_cores, str(input_dir), str(output_dir), cp2k_cores)
+                '\npython ../../cp2k_main.py {} {} {} {}'.format(cp2k_walltime, cp2k_cores, str(input_dir), str(output_dir), cp2k_cores, restart_conf)
             )
+        config = Config()
+        config.cycle = cycle
+        config.walltime = walltime
+        config.cores = cores
+        config.traj_index = traj_index
+        config.env = env
+        config.cluster = cluster
+        config.save(restart_conf)
+
         os.system('module swap cluster/doduo; cd {}; qsub job.sh -d $(pwd)'.format(cp2k_dir))
     else:  
         ase.io.write(output_dir, new_datapoints, format='extxyz')
@@ -199,7 +212,7 @@ def restart_training():
                 '\n\n#PBS -l walltime={}'
                 '\n#PBS -l nodes=1:ppn={}:gpus=1'
                 '\n\nsource ~/.{}'
-                '\npython ../restart.py {} --update-config {}'.format(str(walltime),cores, env, train_dir,config_dir)
+                '\npython ../restart.py {} --update-config {}'.format(str(walltime), cores, env, train_dir, config_dir)
             )
 
         os.system('module swap cluster/{}; qsub {} -d $(pwd) -e {} -o {}'.format(cluster, hpc_run_dir / 'run.sh', hpc_run_dir / 'error', hpc_run_dir / 'output'))
@@ -231,8 +244,13 @@ def restart_training():
 def start_next_cyle():
     old = traj_index.split(':')
     old_len = int(old[1]) - int(old[0])
-    index = '{}:{}'.format(int(old[0])+old_len, int(old[1])+old_len)
+    index = '{}:{}'.format(int(old[0])+old_len, int(old[1])+old_len)        
     next_walltime = walltime + len_models*walltime_per_model_add
+    if cp2k:
+        first_walltime = walltime
+    else:
+        first_walltime = next_walltime
+
     if int(old[1])+old_len <= max_index:
         with open('cycle{}.sh'.format(cycle+1),'w') as rsh:
             rsh.write(
@@ -240,7 +258,7 @@ def start_next_cyle():
                 '\n\n#PBS -l walltime={}'
                 '\n#PBS -l nodes=1:ppn={}:gpus=1'
                 '\n\nsource ~/.{}'
-                '\npython ../train.py {} {} --traj-index {}'.format(str(next_walltime), cores, env, cycle+1,str(next_walltime),index)
+                '\npython ../train.py {} {} --traj-index {}'.format(str(first_walltime), cores, env, cycle+1, str(next_walltime), index)
             )
         os.system('module swap cluster/{}; qsub cycle{}.sh -d $(pwd)'.format(cluster, cycle+1))
 
