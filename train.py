@@ -76,7 +76,7 @@ max_index = 3500
 cluster = 'accelgor'
 env = 'torchenv_stress_accelgor'
 cores = '12' # should be 12 when using accelgor
-cp2k = True
+cp2k = False
 cp2k_cores = 24
 cp2k_walltime = '01:00:00'
 
@@ -247,9 +247,9 @@ def start_next_cyle():
 if cp2k_restart:
     _ = restart_training()
 elif (not cp2k_restart) and cp2k:
-    evaluate_committee()
+    evaluate_committee(load_query_results)
 else:
-    evaluate_committee()
+    evaluate_committee(load_query_results)
     len_models = restart_training()
     if not send_hpc_run:
         start_next_cyle()

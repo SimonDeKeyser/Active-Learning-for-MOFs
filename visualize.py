@@ -79,21 +79,22 @@ class qbc_vis:
 
     def best_mae_hour(self, metrics):
         clean_df = metrics[metrics[' wall'] != ' wall']
-        cycle_stops = metrics[metrics[' wall'] == ' wall'].index
+        diff = metrics[' wall'][1:].values - metrics[' wall'][:-1].values
+        cycle_stops = np.arange(len(diff))[diff < 0]
         cycle_stops = [-1] + list(cycle_stops)
         wall = []
         last_cycle_wall = 0
         cycle_walls = []
         for i in range(len(cycle_stops)-1):
-            wall += list(metrics[' wall'].iloc[cycle_stops[i]+1:cycle_stops[i+1]].to_numpy(np.float32) + last_cycle_wall)
+            wall += list(metrics[' wall'].iloc[cycle_stops[i]+1:cycle_stops[i+1]+1].to_numpy(np.float32) + last_cycle_wall)
             last_cycle_wall = wall[-1]
             cycle_walls.append(last_cycle_wall/3600)
         wall += list(metrics[' wall'].iloc[cycle_stops[-1]+1:].to_numpy(np.float32) + last_cycle_wall)
         best_mae = []
         time = []
-        for h in range(1,48):
+        for h in np.linspace(0.1,48,400):
             if not h > wall[-1]/3600:
-                best_mae.append(clean_df[np.array(wall)/3600 < h][' Validation_all_f_mae'].to_numpy(dtype=np.float64).min())
+                best_mae.append(clean_df[np.array(wall)/3600 < h][' validation_all_f_mae'].to_numpy(dtype=np.float64).min())
                 time.append(h)
             else:
                 break
@@ -101,21 +102,22 @@ class qbc_vis:
 
     def train_mae_hour(self, metrics):
         clean_df = metrics[metrics[' wall'] != ' wall']
-        cycle_stops = metrics[metrics[' wall'] == ' wall'].index
+        diff = metrics[' wall'][1:].values - metrics[' wall'][:-1].values
+        cycle_stops = np.arange(len(diff))[diff < 0]
         cycle_stops = [-1] + list(cycle_stops)
         wall = []
         last_cycle_wall = 0
         cycle_walls = []
         for i in range(len(cycle_stops)-1):
-            wall += list(metrics[' wall'].iloc[cycle_stops[i]+1:cycle_stops[i+1]].to_numpy(np.float32) + last_cycle_wall)
+            wall += list(metrics[' wall'].iloc[cycle_stops[i]+1:cycle_stops[i+1]+1].to_numpy(np.float32) + last_cycle_wall)
             last_cycle_wall = wall[-1]
             cycle_walls.append(last_cycle_wall/3600)
         wall += list(metrics[' wall'].iloc[cycle_stops[-1]+1:].to_numpy(np.float32) + last_cycle_wall)
         train_mae = []
         time = []
-        for h in np.arange(0.1,48,0.25):
+        for h in np.linspace(0.1,48,400):
             if not h > wall[-1]/3600:
-                train_mae.append(clean_df[np.array(wall)/3600 < h][' Training_all_f_mae'].to_numpy(dtype=np.float64)[-1])
+                train_mae.append(clean_df[np.array(wall)/3600 < h][' training_all_f_mae'].to_numpy(dtype=np.float64)[-1])
                 time.append(h)
             else:
                 break
@@ -125,7 +127,7 @@ class qbc_vis:
         p = (self.cycles[c] / 'results').glob('*')
         models = [x for x in p if (x.is_dir() and x.name[:5] == 'model')]
         mx = 0
-        mn = 10
+        mn = 1000
         fig, ax = plt.subplots()
         for model in sorted(models):
             metrics_epoch = pd.read_csv(model / 'metrics_epoch.csv')
@@ -150,7 +152,7 @@ class qbc_vis:
         plt.close()
 
         mx = 0
-        mn = 10
+        mn = 1000
         fig, ax = plt.subplots()
         for model in sorted(models):
             metrics_epoch = pd.read_csv(model / 'metrics_epoch.csv')
@@ -258,22 +260,22 @@ if __name__ == "__main__":
     imgs_dir = 'qbc_imgs' 
     visual = qbc_vis(head_dir, imgs_dir)
     #visual.mean_disagreement('forces','mean')
-    #visual.epoch_metrics()
+    visual.epoch_metrics()
     #visual.evaluation()
 
-    train_folders = ['q4_mean10/qbc_train', 'q4_random10/qbc_train']
+    train_folders = ['q4_mean10_md/qbc_train', 'q4_random10_md/qbc_train']
     labels = ['$\overline{\sigma_{\mathbf{F}}}$', 'random']
-    xticks = np.arange(10,120,10)
-    combine_test('evaluation',train_folders, labels, xticks)
+    #xticks = np.arange(10,120,10)
+    #combine_test('evaluation',train_folders, labels, xticks)
 
     prop = 'forces'
     red = 'mean'
-    #combine_disagreement(train_folders, labels, prop, red)
+    combine_disagreement(train_folders, labels, prop, red)
 
     train_folders = ['q4/qbc_train', 'q4_max/qbc_train', 'q4_random/qbc_train']
     labels = ['$\overline{\sigma_{\mathbf{F}}}$','$max(\sigma_{\mathbf{F}})$', 'random']
     xticks = np.arange(100,800,100)
-    combine_test('evaluation',train_folders, labels, xticks)
+    #combine_test('evaluation',train_folders, labels, xticks)
     #combine_disagreement(train_folders, labels, prop, red)
 
     prop = 'forces'

@@ -1,6 +1,7 @@
 from pathlib import Path
 import logging
 import os
+from re import T
 import pandas as pd
 from natsort import natsorted
 
@@ -26,7 +27,7 @@ Parameters:
 '''
 ##########################################################################################
 
-do_first = False
+do_first = True
 root = Path('../').resolve() 
 head_dir = root / 'qbc_train'
 test_dir = head_dir / 'MD_304_traj.xyz'      
@@ -91,7 +92,10 @@ def evaluate(nequip_train_dir):
             logging.info('\n###################################################################################################\n')
             logging.info('Starting evaluation of:\n')
             logging.info(file)
-            config = Config.from_file(str(file / 'config_final.yaml'))
+            if (file / 'config_final.yaml').exists():
+                config = Config.from_file(str(file / 'config_final.yaml'))
+            else:
+                config = Config.from_file(str(file / 'config.yaml'))
 
             hpc_run_dir = hpc_dir / file.name
             if not hpc_run_dir.exists():
@@ -121,7 +125,10 @@ def evaluate_first(cycle = cycles[0]):
     logging.info('\n###################################################################################################\n')
     logging.info('Starting evaluation of:\n')
     logging.info(file)
-    config = Config.from_file(str(file / 'config_final.yaml'))
+    if (file / 'config_final.yaml').exists():
+        config = Config.from_file(str(file / 'config_final.yaml'))
+    else:
+        config = Config.from_file(str(file / 'config.yaml'))
 
     hpc_dir = evaluate_dir / cycle.name
     if not hpc_dir.exists():

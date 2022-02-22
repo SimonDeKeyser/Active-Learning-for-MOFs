@@ -54,7 +54,7 @@ def restart(file, config):
     logging.info(f"Successfully reload the data set of type {dataset}...")
 
     trainer.set_dataset(dataset)
-    config.save(file+'/config_final.yaml','yaml')
+    config.save(file+'/config.yaml','yaml')
     trainer.train()
 
 if __name__ == "__main__":
