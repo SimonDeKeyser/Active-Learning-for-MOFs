@@ -152,7 +152,7 @@ class qbc:
             batch = c.collate(datas)
             batch = batch.to(self.device)
 
-            self.traj_e[this_batch_test_indexes] = batch['total_energy'].cpu().numpy().flatten()
+            self.traj_e[this_batch_test_indexes] = batch['total_energy'].cpu().numpy().flatten() 
             energies, forces = self.predict(batch)
             
             self.mean_e[this_batch_test_indexes], self.sig_e[this_batch_test_indexes] = self.disagreement(energies, 'energy')
