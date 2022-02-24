@@ -71,6 +71,7 @@ def make_dataset_config(train_config, hpc_run_dir):
 
     config.dataset = 'ase'
     config.dataset_file_name = str(test_dir)
+    config.chemical_symbols = train_config.chemical_symbols
     config.save(str(hpc_run_dir / 'dataset_config.yaml'),'yaml')
 
     return str(hpc_run_dir / 'dataset_config.yaml')
