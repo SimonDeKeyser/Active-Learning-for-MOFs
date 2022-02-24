@@ -217,6 +217,20 @@ class qbc_vis:
             plt.savefig(self.imgs_dir / 'test_f_mae', bbox_inches='tight')
             plt.close()
 
+    def analyse_datapoints(self, combine=False):
+        data_dir = self.cycles[-1] / 'data.xyz'
+        traj = ase.io.read(data_dir, index=':', format='extxyz')
+        volumes = []
+        for atoms in traj:
+            volumes.append(152*atoms.get_volume()/len(atoms))
+
+        if combine:
+            return volumes
+        else:
+            plt.hist(volumes, bins=150, fill=False, color='k')
+            plt.savefig(self.imgs_dir / 'volume_points', bbox_inches='tight')
+            plt.close()
+
 def combine_disagreement(train_folders, labels, prop, red=None):
     if prop == 'energy':
         ylabel = '<$\sigma_{E}$> [meV]'    
@@ -255,6 +269,17 @@ def combine_test(eval_dir, train_folders, labels, xticks = None):
     plt.savefig(vis.imgs_dir / 'total_test', bbox_inches='tight')
     plt.close()
 
+def combine_volume_points(labels):
+    thesis_dir = Path('../../').resolve()
+    for i, folder in enumerate(train_folders):
+        vis = qbc_vis(thesis_dir / folder, imgs_dir)
+        volumes = vis.analyse_datapoints(combine=True)
+        plt.hist(volumes, bins=150, alpha = 0.5, label = labels[i])
+    plt.xlabel('Volume [$\AA^3$]')
+    plt.legend()
+    plt.savefig(vis.imgs_dir / 'combine_volume_points', bbox_inches='tight')
+    plt.close()
+
 if __name__ == "__main__":
     head_dir = Path('../').resolve() / 'qbc_train'
     imgs_dir = 'qbc_imgs' 
@@ -267,17 +292,8 @@ if __name__ == "__main__":
     labels = ['$\overline{\sigma_{\mathbf{F}}}$', 'random']
     #xticks = np.arange(10,120,10)
     #combine_test('evaluation',train_folders, labels, xticks)
+    combine_volume_points(labels)
 
     prop = 'forces'
     red = 'mean'
-    combine_disagreement(train_folders, labels, prop, red)
-
-    train_folders = ['q4/qbc_train', 'q4_max/qbc_train', 'q4_random/qbc_train']
-    labels = ['$\overline{\sigma_{\mathbf{F}}}$','$max(\sigma_{\mathbf{F}})$', 'random']
-    xticks = np.arange(100,800,100)
-    #combine_test('evaluation',train_folders, labels, xticks)
-    #combine_disagreement(train_folders, labels, prop, red)
-
-    prop = 'forces'
-    red = 'max'
     #combine_disagreement(train_folders, labels, prop, red)
