@@ -53,28 +53,30 @@ Parameters:
     - cp2k                      If True, newly selected datapoints are calculated with cp2k
     - cp2k_cores                The amount of cores used in the cp2K job
     - cp2k_walltime             The walltime the cp2k can use for calculating all new datapoints in a cycle
+    - cp2k_first_walltime       The walltime for the QbC evaluation, when using cp2k this is done in a first job
 '''
 ##########################################################################################
 
 root = Path('../../').resolve() # starting the run from /runs folder
 head_dir = root / 'qbc_train'
-traj_dir = head_dir / 'MD_traj.xyz'                                                                                                                             
-n_select = 11
+traj_dir = head_dir / 'MD_304_traj.xyz'                                                                                                                             
+n_select = 2
 n_val_0 = 1                                                                
 n_val_add = 1
 max_epochs = 50000   
 send_hpc_run = False                                                                 
 walltime_per_model_add = dt.timedelta(minutes=10)
-load_query_results = False
+load_query_results = True
 prop = 'forces'
 red = 'mean'
 max_index = 3500
 cluster = 'accelgor'
 env = 'torchenv_stress_accelgor'
 cores = '12' # should be 12 when using accelgor
-cp2k = False
+cp2k = True
 cp2k_cores = 24
 cp2k_walltime = '01:00:00'
+cp2k_first_walltime = '00:10:00'
 
 ##########################################################################################
 @dataclass
@@ -157,7 +159,7 @@ class qbc_trainer:
                     '\n#PBS -l walltime={}'
                     '\n#PBS -l nodes=1:ppn={}'
                     '\n\nsource ~/.cp2kenv'
-                    '\npython ../../cp2k_main.py {} {} {} {}'.format(self.cp2k_walltime, self.cp2k_cores, str(self.input_dir), str(self.output_dir), self.cp2k_cores, restart_conf)
+                    '\npython ../../cp2k_main.py {} {} {} {}'.format(self.cp2k_walltime, self.cp2k_cores, str(self.input_dir), str(self.output_dir), self.cp2k_cores, 'restart.yaml')
                 )
             config = Config()
             config.cycle = self.cycle
@@ -166,9 +168,9 @@ class qbc_trainer:
             config.traj_index = self.traj_index
             config.env = self.env
             config.cluster = self.cluster
-            config.save(restart_conf, 'yaml')
+            config.save(str(restart_conf), 'yaml')
 
-            os.system('module swap cluster/doduo; cd {}; qsub job.sh -d $(pwd)'.format(cp2k_dir))
+            os.system('module swap cluster/doduo; cd {}; ml purge; qsub job.sh -d $(pwd)'.format(cp2k_dir))
         else:  
             ase.io.write(self.output_dir, new_datapoints, format='extxyz')
 
@@ -270,7 +272,7 @@ class qbc_trainer:
         index = '{}:{}'.format(int(old[0])+old_len, int(old[1])+old_len)        
         next_walltime = self.walltime + self.len_models*self.walltime_per_model_add
         if self.cp2k:
-            first_walltime = self.walltime
+            first_walltime = cp2k_first_walltime
         else:
             first_walltime = next_walltime
 
@@ -327,6 +329,8 @@ if __name__ == "__main__":
 
     if cp2k_restart:
         Trainer.restart_training()
+        if not Trainer.send_hpc_run:
+            Trainer.start_next_cyle()
 
     elif (not cp2k_restart) and Trainer.cp2k:
         Trainer.evaluate_committee()

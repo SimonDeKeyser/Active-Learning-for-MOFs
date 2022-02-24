@@ -106,18 +106,23 @@ additional_input = '''
 parser = argparse.ArgumentParser(
         description="Calculate new datapoints."
     )
-parser.add_argument("input-dir", help="Path to .xyz file to be calculated")
-parser.add_argument("output-dir", help="Path where the calculated .xyz file should be written to")
+parser.add_argument("input_dir", help="Path to .xyz file to be calculated")
+parser.add_argument("output_dir", help="Path where the calculated .xyz file should be written to")
 parser.add_argument("cores", help="Amount of cores in HPC job")
 parser.add_argument("restart_conf", help="Path to a .json file containing the QbC restart parameters")
 args = parser.parse_args()
 
-atoms = read(args.input_dir)
+input_dir = args.input_dir
+output_dir = args.output_dir
+cores = int(args.cores)
+restart_conf = args.restart_conf
+
+atoms = read(input_dir)
 calculator = CP2K(
         atoms=atoms,
         auto_write=True,
         basis_set=None,
-        command='mpirun -np {} cp2k_shell.psmp'.format(args.cores),
+        command='mpirun -np {} cp2k_shell.psmp'.format(cores),
         cutoff=1000 * ase.units.Rydberg,
         stress_tensor=True,
         uks=False,
@@ -132,7 +137,7 @@ calculator = CP2K(
         )
 atoms.calc = calculator
 
-with open(args.input_dir,'r') as f:
+with open(input_dir,'r') as f:
     chunk = list(read(f, index=':'))
 
 for state in chunk:
@@ -142,14 +147,13 @@ for state in chunk:
     state.arrays['forces'] = atoms.get_forces()
     state.info['stress'] = voigt_6_to_full_3x3_stress(atoms.get_stress())
     state.info['energy'] = atoms.get_potential_energy()
-    break
 
-with open(args.output_dir, 'w') as f:
+with open(output_dir, 'w') as f:
     write_extxyz(f, chunk)
 
-config = Config.from_file(args.restart_conf)
+config = Config.from_file(restart_conf)
 
-with open('cycle{}_restart.sh'.format(config.cycle),'w') as rsh:
+with open('../cycle{}_restart.sh'.format(config.cycle),'w') as rsh:
     rsh.write(
         '#!/bin/sh'
         '\n\n#PBS -l walltime={}'
@@ -157,4 +161,4 @@ with open('cycle{}_restart.sh'.format(config.cycle),'w') as rsh:
         '\n\nsource ~/.{}'
         '\npython ../train.py {} {} --traj-index {} --cp2k-restart {}'.format(config.walltime, config.cores, config.env, config.cycle, config.walltime, config.traj_index, True)
     )
-os.system('module swap cluster/{}; qsub cycle{}_restart.sh -d $(pwd)'.format(config.cluster, config.cycle))
+os.system('module swap cluster/{}; cd ../; qsub cycle{}_restart.sh -d $(pwd)'.format(config.cluster, config.cycle))
