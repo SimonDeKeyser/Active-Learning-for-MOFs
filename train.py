@@ -264,7 +264,7 @@ class qbc_trainer:
                     logging.info('\n###################################################################################################')
                     logging.info('\nTotal elapsed time: {} hours of total {} hours'.format(round((time.time()-self.start)/3600,3),round(self.walltime.seconds/3600,3)))
                     
-    def start_next_cyle():
+    def start_next_cyle(self):
         old = self.traj_index.split(':')
         old_len = int(old[1]) - int(old[0])
         index = '{}:{}'.format(int(old[0])+old_len, int(old[1])+old_len)        
