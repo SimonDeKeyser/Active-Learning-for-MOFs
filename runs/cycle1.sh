@@ -1,6 +1,6 @@
 #!/bin/sh
 
-#PBS -l walltime=00:10:00
+#PBS -l walltime=01:30:00
 #PBS -l nodes=1:ppn=12:gpus=1
 
 source ~/.torchenv_stress_accelgor
