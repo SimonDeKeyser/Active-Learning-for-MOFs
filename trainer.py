@@ -48,12 +48,12 @@ class qbc_trainer:
     def __post_init__(self):
         logging.info('___ QUERY BY COMMITTEE ___\n')
         logging.info('\t\t###########')
-        logging.info('\t\t# CYCLE {} #'.format(cycle))
+        logging.info('\t\t# CYCLE {} #'.format(self.cycle))
         logging.info('\t\t###########\n')
 
         assert self.head_dir.exists(), 'Head directory does not exist'
         assert self.traj_dir.exists(), 'Trajectory path does not exist'
-        prev_name = 'cycle{}'.format(cycle-1)
+        prev_name = 'cycle{}'.format(self.cycle-1)
         self.prev_nequip_train_dir = self.head_dir / prev_name / 'results'
         self.prev_dataset_dir = self.head_dir / prev_name / 'data.xyz'
         assert self.prev_nequip_train_dir.is_dir(), 'Previous training directory does not exist'
@@ -77,7 +77,7 @@ class qbc_trainer:
         else:
             committee.load()
 
-        new_datapoints = committee.select_data(prop=prop, red=red)
+        new_datapoints = committee.select_data(prop=self.prop, red=self.red)
         committee.plot_traj_disagreement()
 
         if self.cp2k:
@@ -215,9 +215,11 @@ class qbc_trainer:
             with open('cycle{}.sh'.format(self.cycle+1),'w') as rsh:
                 rsh.write(
                     '#!/bin/sh'
-                    '\n\n#PBS -l walltime={}'
+                    '\n\n#PBS -o cycle{}_o.txt'
+                    '\n#PBS -e cycle{}_e.txt'
+                    '\n#PBS -l walltime={}'
                     '\n#PBS -l nodes=1:ppn={}:gpus=1'
                     '\n\nsource ~/.{}'
-                    '\npython ../train.py {} {} --traj-index {}'.format(str(first_walltime), self.cores, self.env, self.cycle+1, str(next_walltime), index)
+                    '\npython ../train.py {} {} --traj-index {}'.format(self.cycle+1, self.cycle+1, str(first_walltime), self.cores, self.env, self.cycle+1, str(next_walltime), index)
                 )
             os.system('module swap cluster/{}; qsub cycle{}.sh -d $(pwd)'.format(self.cluster, self.cycle+1))

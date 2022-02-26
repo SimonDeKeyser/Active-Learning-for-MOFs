@@ -59,7 +59,7 @@ walltime_per_model_add = dt.timedelta(minutes=10)
 load_query_results = False
 prop = 'random'
 red = None
-max_index = 3500
+max_index = 4500
 cluster = 'accelgor'
 env = 'torchenv_stress_accelgor'
 cores = '12' # should be 12 when using accelgor
