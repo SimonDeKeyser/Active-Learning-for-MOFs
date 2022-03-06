@@ -35,7 +35,7 @@ plt.rcParams['lines.linewidth'] = 2.
 plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['mathtext.fontset'] = 'dejavusans'
 
-class qbc_vis:
+class QbC_visualizer:
     def __init__(self, head_dir:Path, imgs_dir:str, eval_dir:str = 'evaluation') -> None:
         self.head_dir = head_dir
         self.imgs_dir = head_dir / imgs_dir
@@ -242,7 +242,7 @@ def combine_disagreement(train_folders, labels, prop, red=None):
 
     thesis_dir = Path('../../').resolve()
     for i, folder in enumerate(train_folders):
-        vis = qbc_vis(thesis_dir / folder, imgs_dir)
+        vis = QbC_visualizer(thesis_dir / folder, imgs_dir)
         disagreement = vis.mean_disagreement(prop, red, combine=True)
         plt.plot(np.arange(vis.len_cycles - 1), disagreement,'.--',label=labels[i])
     plt.ylabel(ylabel)
@@ -254,7 +254,7 @@ def combine_disagreement(train_folders, labels, prop, red=None):
 def combine_test(eval_dir, train_folders, labels, xticks = None):
     thesis_dir = Path('../../').resolve()
     for i, folder in enumerate(train_folders):
-        vis = qbc_vis(thesis_dir / folder, imgs_dir, eval_dir)
+        vis = QbC_visualizer(thesis_dir / folder, imgs_dir, eval_dir)
         all_f_mae, std = vis.evaluation(combine=True)
         if xticks is not None:
             x = xticks
@@ -272,7 +272,7 @@ def combine_test(eval_dir, train_folders, labels, xticks = None):
 def combine_volume_points(labels):
     thesis_dir = Path('../../').resolve()
     for i, folder in enumerate(train_folders):
-        vis = qbc_vis(thesis_dir / folder, imgs_dir)
+        vis = QbC_visualizer(thesis_dir / folder, imgs_dir)
         volumes = vis.analyse_datapoints(combine=True)
         plt.hist(volumes, bins=150, alpha = 0.5, label = labels[i])
     plt.xlabel('Volume [$\AA^3$]')
@@ -283,7 +283,7 @@ def combine_volume_points(labels):
 if __name__ == "__main__":
     head_dir = Path('../').resolve() / 'qbc_train'
     imgs_dir = 'qbc_imgs' 
-    visual = qbc_vis(head_dir, imgs_dir)
+    visual = QbC_visualizer(head_dir, imgs_dir)
     #visual.mean_disagreement('forces','mean')
     visual.epoch_metrics()
     #visual.evaluation()
