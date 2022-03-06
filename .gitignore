@@ -2,3 +2,4 @@ runs/*
 !runs/cycle1.sh
 __pycache__
 wandb
+ssh_keys.pyc

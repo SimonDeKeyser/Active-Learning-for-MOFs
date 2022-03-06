@@ -44,6 +44,7 @@ class qbc_trainer:
     cp2k_walltime: str = '01:00:00'
     traj_index: str = ':'
     cp2k_restart: bool = False
+    cp2k_cluster: str = 'doduo'
 
     def __post_init__(self):
         logging.info('___ QUERY BY COMMITTEE ___\n')
@@ -64,6 +65,10 @@ class qbc_trainer:
         self.dataset_dir = self.cycle_dir / 'data.xyz'
         self.input_dir = self.cycle_dir / 'new_data.xyz'
         self.output_dir = self.cycle_dir / 'calc_data.xyz'
+
+        if self.cp2k:
+            import ssh_keys
+            from vsc_shell import VSC_shell
 
     def evaluate_committee(self):
         committee = qbc(name=self.name, models_dir=self.prev_nequip_train_dir, 
@@ -105,7 +110,9 @@ class qbc_trainer:
             config.cluster = self.cluster
             config.save(str(restart_conf), 'yaml')
 
-            os.system('module swap cluster/doduo; cd {}; ml purge; qsub job.sh -d $(pwd)'.format(cp2k_dir))
+            shell = VSC_shell(ssh_keys.HOST, ssh_keys.USERNAME, ssh_keys.PASSWORD, ssh_keys.KEY_FILENAME)
+            shell.submit_job(self.cp2k_cluster, cp2k_dir, 'job.sh')
+            shell.__del__()
         else:  
             ase.io.write(self.output_dir, new_datapoints, format='extxyz')
 

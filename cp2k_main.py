@@ -11,6 +11,8 @@ from cp2k_calculator import CP2K
 from ase.stress import voigt_6_to_full_3x3_stress
 
 from ase.calculators.loggingcalc import LoggingCalculator
+import ssh_keys
+from vsc_shell import VSC_shell
 #from ase.optimize.precon import Exp, PreconLBFGS
 #from ase.constraints import ExpCellFilter
 
@@ -152,6 +154,7 @@ with open(output_dir, 'w') as f:
     write_extxyz(f, chunk)
 
 config = Config.from_file(restart_conf)
+runs_dir = Path('../').resolve()
 
 with open('../cycle{}_restart.sh'.format(config.cycle),'w') as rsh:
     rsh.write(
@@ -161,4 +164,7 @@ with open('../cycle{}_restart.sh'.format(config.cycle),'w') as rsh:
         '\n\nsource ~/.{}'
         '\npython ../train.py {} {} --traj-index {} --cp2k-restart {}'.format(config.walltime, config.cores, config.env, config.cycle, config.walltime, config.traj_index, True)
     )
-os.system('module swap cluster/{}; cd ../; qsub cycle{}_restart.sh -d $(pwd)'.format(config.cluster, config.cycle))
+
+shell = VSC_shell(ssh_keys.HOST, ssh_keys.USERNAME, ssh_keys.PASSWORD, ssh_keys.KEY_FILENAME)
+shell.submit_job(config.cluster, runs_dir, 'cycle{}_restart.sh'.format(config.cycle))
+shell.__del__()
