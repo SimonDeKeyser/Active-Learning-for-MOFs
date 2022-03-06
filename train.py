@@ -7,7 +7,7 @@ import argparse
 import datetime as dt
 from datetime import timedelta
 
-from trainer import qbc_trainer
+from trainer import QbC_trainer
 
 def args_parse():
     parser = argparse.ArgumentParser(
@@ -43,30 +43,30 @@ Parameters:
     - cp2k                      If True, newly selected datapoints are calculated with cp2k
     - cp2k_cores                The amount of cores used in the cp2K job
     - cp2k_walltime             The walltime the cp2k can use for calculating all new datapoints in a cycle
-    - cp2k_first_walltime       The walltime for the QbC evaluation, when using cp2k this is done in a first job
+    - cp2k_qbc_walltime         The walltime for the QbC evaluation, when using cp2k this is done in a first job
 '''
 ##########################################################################################
 
 root = Path('../../').resolve() # starting the run from /runs folder
 head_dir = root / 'qbc_train'
 traj_dir = head_dir / 'MD_traj.xyz'                                                                                                                             
-n_select = 11
+n_select = 2
 n_val_0 = 1                                                                
 n_val_add = 1
 max_epochs = 50000   
 send_hpc_run = False                                                                 
 walltime_per_model_add = dt.timedelta(minutes=10)
-load_query_results = False
-prop = 'random'
-red = None
-max_index = 4500
+load_query_results = True
+prop = 'forces'
+red = 'mean'
+max_index = 3500
 cluster = 'accelgor'
 env = 'torchenv_stress_accelgor'
 cores = '12' # should be 12 when using accelgor
-cp2k = False
+cp2k = True
 cp2k_cores = 24
 cp2k_walltime = '01:00:00'
-cp2k_first_walltime = '00:10:00'
+cp2k_qbc_walltime = '00:10:00'
 
 ##########################################################################################
 
@@ -83,7 +83,7 @@ if args.cp2k_restart is None:
 else:
     cp2k_restart = args.cp2k_restart
 
-Trainer = qbc_trainer(
+Trainer = QbC_trainer(
     cycle = cycle,
     walltime = walltime,
     start_time = start_time,
@@ -105,7 +105,8 @@ Trainer = qbc_trainer(
     cores = cores,              
     cp2k = cp2k,              
     cp2k_cores = cp2k_cores,              
-    cp2k_walltime = cp2k_walltime,              
+    cp2k_walltime = cp2k_walltime,
+    cp2k_qbc_walltime = cp2k_qbc_walltime,              
     traj_index = traj_index,              
     cp2k_restart = cp2k_restart            
 )

@@ -42,7 +42,7 @@ from nequip.data import AtomicData, dataset_from_config, Collater
 from nequip.train import Trainer
 
 @dataclass
-class qbc:
+class QbC:
     """
     Class containing the Query by Committee
     """

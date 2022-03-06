@@ -14,12 +14,12 @@ from datetime import timedelta
 import ase.io
 from nequip.utils import Config
 
-from qbc import qbc
+from qbc import QbC
 
 logging.basicConfig(format='',level=logging.INFO)
 
 @dataclass
-class qbc_trainer:
+class QbC_trainer:
     cycle: int
     walltime: timedelta
     start_time: float
@@ -42,6 +42,7 @@ class qbc_trainer:
     cp2k: bool = False
     cp2k_cores: int = 24
     cp2k_walltime: str = '01:00:00'
+    cp2k_qbc_walltime: str = '00:10:00'
     traj_index: str = ':'
     cp2k_restart: bool = False
     cp2k_cluster: str = 'doduo'
@@ -71,7 +72,7 @@ class qbc_trainer:
             from vsc_shell import VSC_shell
 
     def evaluate_committee(self):
-        committee = qbc(name=self.name, models_dir=self.prev_nequip_train_dir, 
+        committee = QbC(name=self.name, models_dir=self.prev_nequip_train_dir, 
                         traj_dir=self.traj_dir, results_dir=self.head_dir,
                         traj_index=self.traj_index, n_select=self.n_select, nequip_train=True
                     )
@@ -214,7 +215,7 @@ class qbc_trainer:
         index = '{}:{}'.format(int(old[0])+old_len, int(old[1])+old_len)        
         next_walltime = self.walltime + self.len_models*self.walltime_per_model_add
         if self.cp2k:
-            first_walltime = cp2k_first_walltime
+            first_walltime = self.cp2k_qbc_walltime
         else:
             first_walltime = next_walltime
 
