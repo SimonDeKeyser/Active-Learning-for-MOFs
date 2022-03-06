@@ -12,7 +12,8 @@ logging.basicConfig(format='',level=logging.INFO)
 
 '''
 Parameters:
-    - do_first                  If True, only the first model of the first cycle is evaluated; this is needed because the dataset is loaded from ase and saved as torch     
+    - do_first                  If True, only the first model of the first cycle is evaluated; this is needed because the dataset is loaded from ase and saved as torch 
+    - i_cycles                  If None, all cycles are evaluated; if a tuple, all cycles between the two tuple values are evaluated 
     - head_dir                  Head directory for the QbC environment                           
     - test_dir                  The path to the trajectory for evaulation
     - index                     The index range of the trajectory to evaluate on
@@ -27,11 +28,12 @@ Parameters:
 '''
 ##########################################################################################
 
-do_first = True
+do_first = False
+i_cycles = (9,10)
 root = Path('../').resolve() 
 head_dir = root / 'qbc_train'
-test_dir = head_dir / 'MD_304_traj.xyz'      
-index = '3500:3892'   
+test_dir = head_dir / 'MD_traj.xyz'      
+index = '1300:2632'   
 walltime = '00:05:00'
 first_walltime = '00:05:00'
 batch_size = 5
@@ -39,7 +41,7 @@ device = 'cuda'
 eval_name = 'evaluation'
 cluster = 'accelgor'
 env = 'torchenv_stress_accelgor'
-cores = '12' # should be 12 when using accelgor                                                                                                            
+cores = '12' # should be 12 when using accelgor                                                                                                             
 
 ##########################################################################################
 logging.info('EVALUATION ON TEST SET:\n')
@@ -156,10 +158,13 @@ def evaluate_first(cycle = cycles[0]):
     os.system('module swap cluster/{}; qsub {} -d $(pwd) -e {} -o {}'.format(cluster, hpc_run_dir / 'eval.sh', hpc_run_dir / 'error', hpc_run_dir / 'output'))
     logging.info('\t-{} submitted'.format(file.name))
 
+if i_cycles is not None:
+    eval_cycles = cycles[i_cycles[0]:i_cycles[1]+1]
+
 if do_first:
     evaluate_first()
 else:
-    for cycle in cycles:
+    for cycle in eval_cycles:
         nequip_train_dir = cycle / 'results'
         assert nequip_train_dir.exists(), 'The NequIP training directory cannot be found'
 
