@@ -160,8 +160,6 @@ class QbC:
             self.sig_e[this_batch_test_indexes] = energies.std(-1).flatten()
             
             self.mean_f_mean[this_batch_test_indexes] = np.array([abs(forces.mean(-1))[n_atoms[:b].sum(): n_atoms[:b].sum() + n_atoms[b]].mean() for b in range(self.batch_size)])
-            print(self.mean_f_mean)
-            print(n_atoms)
             self.sig_f_mean[this_batch_test_indexes] = np.array([forces.std(-1)[n_atoms[:b].sum(): n_atoms[:b].sum() + n_atoms[b]].mean() for b in range(self.batch_size)])
             
             self.mean_f_max[this_batch_test_indexes] = np.array([abs(forces.mean(-1))[n_atoms[:b].sum(): n_atoms[:b].sum() + n_atoms[b]].max() for b in range(self.batch_size)])
