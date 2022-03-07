@@ -14,7 +14,7 @@ from datetime import timedelta
 import ase.io
 from nequip.utils import Config
 
-from qbc import QbC
+from qbc import QbC, CNNP
 
 logging.basicConfig(format='',level=logging.INFO)
 
@@ -71,11 +71,11 @@ class QbC_trainer:
             import ssh_keys
             from vsc_shell import VSC_shell
 
-    def evaluate_committee(self):
-        committee = QbC(name=self.name, models_dir=self.prev_nequip_train_dir, 
-                        traj_dir=self.traj_dir, results_dir=self.head_dir,
-                        traj_index=self.traj_index, n_select=self.n_select, nequip_train=True
-                    )
+    def query(self):
+        cnnp = CNNP(self.prev_nequip_train_dir).load_models_from_nequip_training()
+        committee = QbC(name=self.name, cnnp=cnnp, traj_dir=self.traj_dir, results_dir=self.head_dir,
+                        traj_index=self.traj_index, n_select=self.n_select
+                        )
         assert self.cycle_dir.is_dir(), 'Something went wrong in the qbc class'
 
         if not self.load_query_results:

@@ -42,103 +42,100 @@ from nequip.data import AtomicData, dataset_from_config, Collater
 from nequip.train import Trainer
 
 @dataclass
-class QbC:
+class CNNP:
     """
-    Class containing the Query by Committee
+    Class which contains the Committee Neural Network Potential
     """
-    name: str
     models_dir: str
-    traj_dir: str
-    results_dir: str
-    traj_index: str = ':'
-    n_select: int = 100
-    nequip_train: bool = False
-    r_max: float = 4.5
-    batch_size: int = 5
 
     def __post_init__(self):
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         logging.info('Using {} device'.format(self.device))
         assert self.models_dir.is_dir(), 'The models directory does not exist'
+
+    def load_models_from_nequip_training(self):
+        self.models = {}
+        p = Path(self.models_dir).glob('*')
+        model_files = [x for x in p if x.is_dir()]
+        logging.info('Models found in the NequIP training directory:')
+        for file in sorted(model_files):
+            if 'model' in file.name:
+                logging.info('*\t{}'.format(file.name))
+                model, self.config = Trainer.load_model_from_training_session(traindir=file)
+                model = model.to(self.device)
+                model.eval()
+                self.models[file.name] = model  
+    
+    def load_models_from_nequip_deployed(self):
+        self.models = {}
+        p = Path(self.models_dir).glob('*')
+        model_files = [x for x in p if x.is_file()]
+        logging.info('Models found in the models directory:')
+        for file in model_files:
+            if file.suffix == '.pth':
+                logging.info('*\t{}'.format(file.name[:-4]))
+                model, _ = load_deployed_model(file, self.device)
+                assert(model.__class__.__name__ == 'RecursiveScriptModule')
+                self.models[file.name[:-4]] = model
+
+    def __len__(self):
+        if self.models is None:
+            return 0
+        else:
+            return len(self.models) 
+
+    def forward(self, batch):
+        batch = batch.to(self.device)
+        energies = np.zeros((len(self), self.batch_size))
+        forces = np.zeros((len(self), batch['forces'].shape[0], 3))
+
+        results = [model(AtomicData.to_AtomicDataDict(batch)) for model in self.models.values()]
+        energies = torch.stack([result['total_energy'] for result in results], dim=-1)
+        forces = torch.stack([result['forces'] for result in results], dim=-1)
+
+        return energies, forces
+
+@dataclass
+class QbC:
+    """
+    Class which performs the Query by Committee
+    """
+    name: str
+    cnnp: CNNP
+    traj_dir: str
+    results_dir: str
+    traj_index: str = ':'
+    n_select: int = 100
+    r_max: float = 4.5
+    batch_size: int = 5
+
+    def __post_init__(self):
+        self.device = self.cnnp.device
         assert self.traj_dir.exists(), 'The trajectory file does not exist'
         self.results_dir = self.results_dir / self.name
         if not self.results_dir.exists():
             self.results_dir.mkdir()
             logging.info('Created results directory: \n{}'.format(self.results_dir))
-        self.store_models()
         self.load_traj()
         self.traj_e = np.zeros(self.traj_len)
         self.mean_e, self.sig_e = np.zeros(self.traj_len), np.zeros(self.traj_len)
         self.mean_f_mean, self.sig_f_mean = np.zeros(self.traj_len), np.zeros(self.traj_len)
         self.mean_f_max, self.sig_f_max = np.zeros(self.traj_len), np.zeros(self.traj_len)
         assert self.n_select<self.traj_len, 'The wanted amount of selection datapoints exceeds the amount of total datapoints: {}>{}'.format(self.n_select, self.traj_len)
-
-    def store_models(self):
-        self.models = {}
-        p = Path(self.models_dir).glob('*')
-        if self.nequip_train:
-            model_files = [x for x in p if x.is_dir()]
-            logging.info('Models found in the NequIP training directory:')
-            for file in sorted(model_files):
-                if 'model' in file.name:
-                    logging.info('*\t{}'.format(file.name))
-                    model, self.config = Trainer.load_model_from_training_session(traindir=file)
-                    model = model.to(self.device)
-                    model.eval()
-                    self.models[file.name] = model  
-        else:
-            model_files = [x for x in p if x.is_file()]
-            logging.info('Models found in the models directory:')
-            for file in model_files:
-                if file.suffix == '.pth':
-                    logging.info('*\t{}'.format(file.name[:-4]))
-                    model, _ = load_deployed_model(file, self.device)
-                    assert(model.__class__.__name__ == 'RecursiveScriptModule')
-                    self.models[file.name[:-4]] = model       
-        self.models_len = len(self.models)
-        assert self.models_len >= 2, 'The amount fo models in the committee is less than 2'
-        logging.info('\n')
     
     def load_traj(self):
         logging.info('Loading trajectory from ...: \n{}'.format(self.traj_dir))
         assert(self.traj_dir.suffix == '.xyz')
-        self.config.dataset_file_name = str(self.traj_dir)
-        self.config.ase_args['index'] = self.traj_index
-        self.config.root = str(self.results_dir)
-        self.traj = dataset_from_config(self.config, prefix='dataset')
-        #self.traj = ase.io.read(self.traj_dir, index=self.traj_index, format='extxyz')
+        self.cnnp.config.dataset_file_name = str(self.traj_dir)
+        self.cnnp.config.ase_args['index'] = self.traj_index
+        self.cnnp.config.root = str(self.results_dir)
+        self.traj = dataset_from_config(self.cnnp.config, prefix='dataset')
         self.traj_len = len(self.traj)
         logging.info('... Trajectory loaded\n')
 
-    def predict(self, batch):
-        batch = batch.to(self.device)
-        energies = np.zeros((self.models_len, self.batch_size))
-        forces = np.zeros((self.models_len,batch['forces'].shape[0],3))
-        j = 0
-        for model in self.models.values():
-            out = model(AtomicData.to_AtomicDataDict(batch))
-            energies[j,:] = out['total_energy'].detach().cpu().numpy().flatten()
-            forces[j,:,:] = out['forces'].detach().cpu().numpy()
-            j += 1
-            
-        return energies, forces
-
-    def disagreement(self, pred, prop, red=None):
-        mean = np.mean(pred, axis=0)
-        std = np.std(pred, axis=0)
-        if prop == 'forces':
-            n_atoms = mean.shape[0]//self.batch_size
-            if red == 'mean':
-                mean = [np.mean(abs(mean[batch_i* n_atoms: (batch_i + 1)* n_atoms, :]),axis=(0,1)) for batch_i in range(self.batch_size)]
-                std = [np.mean(std[batch_i* n_atoms: (batch_i + 1)* n_atoms, :],axis=(0,1)) for batch_i in range(self.batch_size)]
-            if red == 'max':
-                mean = [np.max(abs(mean[batch_i* n_atoms: (batch_i + 1)* n_atoms, :]),axis=(0,1)) for batch_i in range(self.batch_size)]
-                std = [np.max(std[batch_i* n_atoms: (batch_i + 1)* n_atoms, :],axis=(0,1)) for batch_i in range(self.batch_size)]
-        
-        return np.array(mean), np.array(std)
-
     def evaluate_committee(self, save=False):
         logging.info('Starting evaluation ...')
+        logging.info('Batch:')
         c = Collater.for_dataset(self.traj, exclude_keys=[])
         test_idcs = np.arange(self.traj_len)
         batch_i = 0
@@ -147,17 +144,27 @@ class QbC:
                 batch_i * self.batch_size : (batch_i + 1) * self.batch_size
             ]
             datas = [self.traj[int(idex)] for idex in this_batch_test_indexes]
+        
             if len(datas) == 0:
                 break
+            n_atoms = np.array([data.positions.shape[0] for data in datas])
             batch = c.collate(datas)
             batch = batch.to(self.device)
 
             self.traj_e[this_batch_test_indexes] = batch['total_energy'].cpu().numpy().flatten() 
-            energies, forces = self.predict(batch)
+            energies, forces = self.cnnp.forward(batch)
+
+            energies = energies.detach().cpu().numpy()
+            forces = forces.detach().cpu().numpy()
             
-            self.mean_e[this_batch_test_indexes], self.sig_e[this_batch_test_indexes] = self.disagreement(energies, 'energy')
-            self.mean_f_mean[this_batch_test_indexes], self.sig_f_mean[this_batch_test_indexes] = self.disagreement(forces, 'forces', 'mean')
-            self.mean_f_max[this_batch_test_indexes], self.sig_f_max[this_batch_test_indexes] = self.disagreement(forces, 'forces', 'max')
+            self.mean_e[this_batch_test_indexes] = energies.mean(-1).flatten()
+            self.sig_e[this_batch_test_indexes] = energies.std(-1).flatten()
+            
+            self.mean_f_mean[this_batch_test_indexes] = np.array([abs(forces.mean(-1))[n_atoms[:b].sum(): n_atoms[:b].sum() + n_atoms[b]].mean() for b in range(self.batch_size)])
+            self.sig_f_mean[this_batch_test_indexes] = np.array([forces.std(-1)[n_atoms[:b].sum(): n_atoms[:b].sum() + n_atoms[b]].mean() for b in range(self.batch_size)])
+            
+            self.mean_f_max[this_batch_test_indexes] = np.array([abs(forces.mean(-1))[n_atoms[:b].sum(): n_atoms[:b].sum() + n_atoms[b]].max() for b in range(self.batch_size)])
+            self.sig_f_max[this_batch_test_indexes] = np.array([forces.std(-1)[n_atoms[:b].sum(): n_atoms[:b].sum() + n_atoms[b]].max() for b in range(self.batch_size)])
             logging.info('[{}/{}]'.format(batch_i,self.traj_len//self.batch_size))
             batch_i += 1
             
