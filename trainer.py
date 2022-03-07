@@ -14,6 +14,12 @@ from datetime import timedelta
 import ase.io
 from nequip.utils import Config
 
+try:
+    import ssh_keys
+except ImportError:
+    pass 
+from vsc_shell import VSC_shell
+
 from qbc import QbC, CNNP
 
 logging.basicConfig(format='',level=logging.INFO)
@@ -67,10 +73,6 @@ class QbC_trainer:
         self.input_dir = self.cycle_dir / 'new_data.xyz'
         self.output_dir = self.cycle_dir / 'calc_data.xyz'
 
-        if self.cp2k:
-            import ssh_keys
-            from vsc_shell import VSC_shell
-
     def query(self):
         cnnp = CNNP(self.prev_nequip_train_dir).load_models_from_nequip_training()
         committee = QbC(name=self.name, cnnp=cnnp, traj_dir=self.traj_dir, results_dir=self.head_dir,
@@ -112,7 +114,7 @@ class QbC_trainer:
             config.save(str(restart_conf), 'yaml')
 
             shell = VSC_shell(ssh_keys.HOST, ssh_keys.USERNAME, ssh_keys.PASSWORD, ssh_keys.KEY_FILENAME)
-            shell.submit_job(self.cp2k_cluster, cp2k_dir, 'job.sh')
+            shell.submit_job(self.cp2k_cluster, cp2k_dir.resolve(), 'job.sh')
             shell.__del__()
         else:  
             ase.io.write(self.output_dir, new_datapoints, format='extxyz')

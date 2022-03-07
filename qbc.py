@@ -64,7 +64,8 @@ class CNNP:
                 model, self.config = Trainer.load_model_from_training_session(traindir=file)
                 model = model.to(self.device)
                 model.eval()
-                self.models[file.name] = model  
+                self.models[file.name] = model 
+        return self 
     
     def load_models_from_nequip_deployed(self):
         self.models = {}
@@ -78,6 +79,8 @@ class CNNP:
                 assert(model.__class__.__name__ == 'RecursiveScriptModule')
                 self.models[file.name[:-4]] = model
 
+        return self
+
     def __len__(self):
         if self.models is None:
             return 0
@@ -85,10 +88,6 @@ class CNNP:
             return len(self.models) 
 
     def forward(self, batch):
-        batch = batch.to(self.device)
-        energies = np.zeros((len(self), self.batch_size))
-        forces = np.zeros((len(self), batch['forces'].shape[0], 3))
-
         results = [model(AtomicData.to_AtomicDataDict(batch)) for model in self.models.values()]
         energies = torch.stack([result['total_energy'] for result in results], dim=-1)
         forces = torch.stack([result['forces'] for result in results], dim=-1)
@@ -147,7 +146,7 @@ class QbC:
         
             if len(datas) == 0:
                 break
-            n_atoms = np.array([data.positions.shape[0] for data in datas])
+            n_atoms = np.array([data.pos.shape[0] for data in datas])
             batch = c.collate(datas)
             batch = batch.to(self.device)
 
@@ -161,12 +160,14 @@ class QbC:
             self.sig_e[this_batch_test_indexes] = energies.std(-1).flatten()
             
             self.mean_f_mean[this_batch_test_indexes] = np.array([abs(forces.mean(-1))[n_atoms[:b].sum(): n_atoms[:b].sum() + n_atoms[b]].mean() for b in range(self.batch_size)])
+            print(self.mean_f_mean)
+            print(n_atoms)
             self.sig_f_mean[this_batch_test_indexes] = np.array([forces.std(-1)[n_atoms[:b].sum(): n_atoms[:b].sum() + n_atoms[b]].mean() for b in range(self.batch_size)])
             
             self.mean_f_max[this_batch_test_indexes] = np.array([abs(forces.mean(-1))[n_atoms[:b].sum(): n_atoms[:b].sum() + n_atoms[b]].max() for b in range(self.batch_size)])
             self.sig_f_max[this_batch_test_indexes] = np.array([forces.std(-1)[n_atoms[:b].sum(): n_atoms[:b].sum() + n_atoms[b]].max() for b in range(self.batch_size)])
-            logging.info('[{}/{}]'.format(batch_i,self.traj_len//self.batch_size))
             batch_i += 1
+            logging.info('[{}/{}]'.format(batch_i,self.traj_len//self.batch_size))
             
         logging.info('... Evaluation finished\n')
         if save:

@@ -56,7 +56,7 @@ n_val_add = 1
 max_epochs = 50000   
 send_hpc_run = False                                                                 
 walltime_per_model_add = dt.timedelta(minutes=10)
-load_query_results = True
+load_query_results = False
 prop = 'forces'
 red = 'mean'
 max_index = 3500
@@ -113,8 +113,8 @@ Trainer = QbC_trainer(
 
 if cp2k_restart:
     Trainer.restart_training()
-    if not Trainer.send_hpc_run:
-        Trainer.start_next_cyle()
+    #if not Trainer.send_hpc_run:
+    #    Trainer.start_next_cyle()
 
 elif (not cp2k_restart) and Trainer.cp2k:
     Trainer.query()
