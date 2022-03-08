@@ -36,10 +36,13 @@ plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['mathtext.fontset'] = 'cm'
 import numpy as np
 import ase.io
+from attack_model import wrap_model
 import torch
 from nequip.scripts.deploy import load_deployed_model
 from nequip.data import AtomicData, dataset_from_config, Collater
-from nequip.train import Trainer
+from nequip.train import Trainer, Loss
+from nequip.utils import Config
+from torch.autograd import Variable as V
 
 @dataclass
 class CNNP:
@@ -53,7 +56,7 @@ class CNNP:
         logging.info('Using {} device'.format(self.device))
         assert self.models_dir.is_dir(), 'The models directory does not exist'
 
-    def load_models_from_nequip_training(self):
+    def load_models_from_nequip_training(self, attack=False):
         self.models = {}
         p = Path(self.models_dir).glob('*')
         model_files = [x for x in p if x.is_dir()]
@@ -62,8 +65,10 @@ class CNNP:
             if 'model' in file.name:
                 logging.info('*\t{}'.format(file.name))
                 model, self.config = Trainer.load_model_from_training_session(traindir=file)
-                model = model.to(self.device)
+                if attack:
+                    model = wrap_model(model)
                 model.eval()
+                model = model.to(self.device)
                 self.models[file.name] = model 
         return self 
     
@@ -71,11 +76,13 @@ class CNNP:
         self.models = {}
         p = Path(self.models_dir).glob('*')
         model_files = [x for x in p if x.is_file()]
+        print(model_files)
         logging.info('Models found in the models directory:')
         for file in model_files:
             if file.suffix == '.pth':
                 logging.info('*\t{}'.format(file.name[:-4]))
                 model, _ = load_deployed_model(file, self.device)
+                self.config = Config.from_file(str(self.models_dir / "model0/config.yaml"))
                 assert(model.__class__.__name__ == 'RecursiveScriptModule')
                 self.models[file.name[:-4]] = model
 
@@ -89,8 +96,8 @@ class CNNP:
 
     def forward(self, batch):
         results = [model(AtomicData.to_AtomicDataDict(batch)) for model in self.models.values()]
-        energies = torch.stack([result['total_energy'] for result in results], dim=-1)
-        forces = torch.stack([result['forces'] for result in results], dim=-1)
+        energies = torch.stack([r['total_energy'] for r in results], dim=-1)
+        forces = torch.stack([r['forces'] for r in results], dim=-1)
 
         return energies, forces
 
@@ -104,7 +111,7 @@ class QbC:
     traj_dir: str
     results_dir: str
     traj_index: str = ':'
-    n_select: int = 100
+    n_select: int = 10
     r_max: float = 4.5
     batch_size: int = 5
 
@@ -255,3 +262,153 @@ class QbC:
         axs[3].legend()
 
         plt.savefig('{}/traj_disagreement'.format(self.results_dir),dpi=100)
+
+class AdvLoss(Loss):
+    def __init__(self, dataset_e, temperature):
+        self.dataset_e = dataset_e
+        self.temperature = temperature
+
+    def loss_fn(self, e, f):
+        return -f.std(-1).mean(-1, keepdims=True)*self.probability_fn(e.mean(-1).reshape(-1,1))
+
+    def probability_fn(self, yp):
+        return self.boltzmann_probability(yp) / self.partition_fn()
+
+    def partition_fn(self):
+        return self.boltzmann_probability(self.dataset_e).mean()
+
+    def boltzmann_probability(self, e):
+        return torch.exp(-abs(e)/ self.temperature)
+
+@dataclass
+class Attacker:
+    """
+    Class which performs an adversarial attack
+    """
+    name: str
+    cnnp: CNNP
+    dataset_dir: str
+    results_dir: str
+    n_select: int = 10
+    r_max: float = 4.5
+    delta_init: float = 1e-1
+    epsilon: float = 3
+    optim_lr: float =1e-2
+    temperature: float = 60000
+
+    def __post_init__(self):
+        self.device = self.cnnp.device
+        assert self.dataset_dir.exists(), 'The dataset file does not exist'
+        self.results_dir = self.results_dir / self.name
+        if not self.results_dir.exists():
+            self.results_dir.mkdir()
+            logging.info('Created results directory: \n{}'.format(self.results_dir))
+        self.load_dataset()
+        self.dataset_e = torch.Tensor([struct.total_energy[0] for struct in self.dataset],device = self.device)
+        self.loss_fn = AdvLoss(self.dataset_e, self.temperature)
+
+    def load_dataset(self):
+        logging.info('Loading dataset from ...: \n{}'.format(self.dataset_dir))
+        assert(self.dataset_dir.suffix == '.xyz')
+        self.cnnp.config.dataset_file_name = str(self.dataset_dir)
+        self.cnnp.config.ase_args['index'] = ':'
+        self.cnnp.config.root = str(self.results_dir)
+        self.dataset = dataset_from_config(self.cnnp.config, prefix='dataset')
+        self.dataset_len = len(self.dataset)
+        logging.info('... Dataset loaded\n')
+
+    def initialize_translation(self):
+        delta = self.delta_init * torch.randn((self.n_atoms, 3), device=self.device)
+        delta.requires_grad = True
+        opt = torch.optim.Adam([delta], lr=self.optim_lr)
+        
+        return delta, opt
+
+    def attack(self, epochs=60):
+        self.initial = random.choice(self.dataset)
+        self.initial_ase = self.initial.to(device="cpu").to_ase(type_mapper=self.dataset.type_mapper)
+        self.n_atoms = self.initial.pos.shape[0]
+        delta, opt = self.initialize_translation()
+        
+        results = []
+        logging.info('Starting attack ...')
+        logging.info('Epoch:')
+        for epoch in range(epochs):
+            
+            epoch_results = self.attack_epoch(opt, delta)
+            results.append({
+                'epoch': epoch,
+                **epoch_results
+            })
+            logging.info('[{}/{}]\tloss: {}'.format(epoch,epochs, epoch_results['loss']))
+            
+        return results
+
+    def attack_epoch(self, opt, delta):
+        opt.zero_grad()
+        batch = self.prepare_attack(delta)
+
+        energy, forces = self.cnnp.forward(batch)
+
+        energy_per_atom = energy / self.n_atoms
+        loss = self.loss_fn.loss_fn(e=energy_per_atom, f=forces).sum()
+
+        loss_item = loss.item()
+
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+        delta.data.clamp_(-self.epsilon, self.epsilon)
+        
+        return {
+            'delta': batch['delta'].clone().detach().cpu().numpy(),
+            'energy': energy.detach().cpu().numpy(),
+            'forces': forces.detach().cpu().numpy(),
+            'loss': loss_item,
+        }
+
+    def prepare_attack(self, delta):
+        atoms = self.initial.clone()
+        pos = atoms.pos
+        pos.requires_grad = True
+        pos = pos + delta
+
+        batch = AtomicData.from_points(pos, r_max = self.initial.r_max, cell = self.initial.cell, pbc = self.initial.pbc)
+        batch.atom_types = self.initial.atom_types
+        batch = AtomicData.to_AtomicDataDict(batch)
+        batch['forces'] = torch.Tensor([])
+        batch['stress'] = torch.Tensor([])
+        batch['total_energy'] = torch.Tensor([0])
+        self.batch_to(batch, self.device)
+
+        batch['delta'] = delta
+        return batch
+    
+    def batch_to(self, batch, device):
+        gpu_batch = dict()
+        for key, val in batch.items():
+            gpu_batch[key] = val.to(device) if hasattr(val, 'to') else val
+        return gpu_batch
+
+    def visualise_attack(self, df, volumes):
+        sig_f_mean = [f.std(-1).mean() for f in df['forces']]
+        
+        fig, ax = plt.subplots(figsize=(4, 5))
+        ax.spines['right'].set_visible(True)
+
+        ax.plot(volumes, color='k')
+
+        ax.set_ylabel('Volume [$\AA^3$]')
+
+        COLOR_TAX = '#d62728'
+        tax = ax.twinx()
+        tax.plot(sig_f_mean, color=COLOR_TAX)
+        tax.set_yticklabels(
+            tax.get_yticks(),
+            color=COLOR_TAX
+        )
+        tax.set_ylabel('$\overline{\sigma_{\mathbf{F}}}$ [eV/$\AA$]', color=COLOR_TAX)
+
+        ax.set_xlabel('Attack step')
+
+        plt.savefig('test', bbox_inches='tight')

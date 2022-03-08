@@ -13,6 +13,7 @@ from datetime import timedelta
 
 import ase.io
 from nequip.utils import Config
+import pandas as pd
 
 try:
     import ssh_keys
@@ -20,7 +21,7 @@ except ImportError:
     pass 
 from vsc_shell import VSC_shell
 
-from qbc import QbC, CNNP
+from qbc import QbC, CNNP, Attacker
 
 logging.basicConfig(format='',level=logging.INFO)
 
@@ -72,6 +73,25 @@ class QbC_trainer:
         self.dataset_dir = self.cycle_dir / 'data.xyz'
         self.input_dir = self.cycle_dir / 'new_data.xyz'
         self.output_dir = self.cycle_dir / 'calc_data.xyz'
+
+    def adverserial_attack(self):
+        cnnp = CNNP(self.prev_nequip_train_dir).load_models_from_nequip_training(attack=True)
+        committee = Attacker(name=self.name, cnnp=cnnp, dataset_dir=self.prev_dataset_dir, results_dir=self.head_dir,
+                        n_select=self.n_select
+                        )
+        results = committee.attack(100)
+        df = pd.DataFrame(results)
+
+        traj = [committee.initial_ase.copy()]
+        at = committee.initial_ase.copy()
+        volumes = [152*at.get_volume()/(2*len(at))]
+        for transl in df.delta:
+            at = committee.initial_ase.copy()
+            at.translate(transl)
+            traj.append(at)
+            volumes.append(152*at.get_volume()/(2*len(at)))
+        committee.visualise_attack(df, volumes)
+        #ase.io.write('cmp.xyz', traj, format='extxyz')
 
     def query(self):
         cnnp = CNNP(self.prev_nequip_train_dir).load_models_from_nequip_training()
