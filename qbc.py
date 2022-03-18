@@ -74,17 +74,15 @@ class CNNP:
     
     def load_models_from_nequip_deployed(self):
         self.models = {}
-        p = Path(self.models_dir).glob('*')
+        p = Path(self.models_dir).glob('*/deployed.pth')
         model_files = [x for x in p if x.is_file()]
-        print(model_files)
         logging.info('Models found in the models directory:')
-        for file in model_files:
-            if file.suffix == '.pth':
-                logging.info('*\t{}'.format(file.name[:-4]))
-                model, _ = load_deployed_model(file, self.device)
-                self.config = Config.from_file(str(self.models_dir / "model0/config.yaml"))
-                assert(model.__class__.__name__ == 'RecursiveScriptModule')
-                self.models[file.name[:-4]] = model
+        for file in sorted(model_files):
+            logging.info('*\t{}'.format(file.parts[-2]))
+            model, _ = load_deployed_model(file, self.device)
+            self.config = Config.from_file(str(self.models_dir / 'model0' / 'config.yaml'))
+            assert(model.__class__.__name__ == 'RecursiveScriptModule')
+            self.models[file.parts[-2]] = model
 
         return self
 
@@ -106,10 +104,9 @@ class QbC:
     """
     Class which performs the Query by Committee
     """
-    name: str
+    results_dir: str
     cnnp: CNNP
     traj_dir: str
-    results_dir: str
     traj_index: str = ':'
     n_select: int = 10
     r_max: float = 4.5
@@ -118,10 +115,7 @@ class QbC:
     def __post_init__(self):
         self.device = self.cnnp.device
         assert self.traj_dir.exists(), 'The trajectory file does not exist'
-        self.results_dir = self.results_dir / self.name
-        if not self.results_dir.exists():
-            self.results_dir.mkdir()
-            logging.info('Created results directory: \n{}'.format(self.results_dir))
+        assert self.results_dir.exists(), 'The results dir does not exist'
         self.load_traj()
         self.traj_e = np.zeros(self.traj_len)
         self.mean_e, self.sig_e = np.zeros(self.traj_len), np.zeros(self.traj_len)
@@ -166,13 +160,13 @@ class QbC:
             self.mean_e[this_batch_test_indexes] = energies.mean(-1).flatten()
             self.sig_e[this_batch_test_indexes] = energies.std(-1).flatten()
             
-            self.mean_f_mean[this_batch_test_indexes] = np.array([abs(forces.mean(-1))[n_atoms[:b].sum(): n_atoms[:b].sum() + n_atoms[b]].mean() for b in range(self.batch_size)])
-            self.sig_f_mean[this_batch_test_indexes] = np.array([forces.std(-1)[n_atoms[:b].sum(): n_atoms[:b].sum() + n_atoms[b]].mean() for b in range(self.batch_size)])
+            self.mean_f_mean[this_batch_test_indexes] = np.array([abs(forces.mean(-1))[n_atoms[:b].sum(): n_atoms[:b].sum() + n_atoms[b]].mean() for b in range(len(datas))])
+            self.sig_f_mean[this_batch_test_indexes] = np.array([forces.std(-1)[n_atoms[:b].sum(): n_atoms[:b].sum() + n_atoms[b]].mean() for b in range(len(datas))])
             
-            self.mean_f_max[this_batch_test_indexes] = np.array([abs(forces.mean(-1))[n_atoms[:b].sum(): n_atoms[:b].sum() + n_atoms[b]].max() for b in range(self.batch_size)])
-            self.sig_f_max[this_batch_test_indexes] = np.array([forces.std(-1)[n_atoms[:b].sum(): n_atoms[:b].sum() + n_atoms[b]].max() for b in range(self.batch_size)])
+            self.mean_f_max[this_batch_test_indexes] = np.array([abs(forces.mean(-1))[n_atoms[:b].sum(): n_atoms[:b].sum() + n_atoms[b]].max() for b in range(len(datas))])
+            self.sig_f_max[this_batch_test_indexes] = np.array([forces.std(-1)[n_atoms[:b].sum(): n_atoms[:b].sum() + n_atoms[b]].max() for b in range(len(datas))])
             batch_i += 1
-            logging.info('[{}/{}]'.format(batch_i,self.traj_len//self.batch_size))
+            logging.info('[{}/{}]'.format(batch_i,int(np.ceil(self.traj_len/self.batch_size))))
             
         logging.info('... Evaluation finished\n')
         if save:
@@ -226,40 +220,34 @@ class QbC:
         assert self.ind is not None, 'First select indices to plot them'
         if from_results_dir:
             self.load()
-        ylabel1 = '$E_{pred}$ [eV]'
+        ylabel1 = 'E [eV]'
         ylabel2 = '$\sigma_{E}$ [eV]'
         ylabel3 = '$\overline{\sigma_{\mathbf{F}}}$ [eV/$\AA$]'
         ylabel4 = '$max(\sigma_{\mathbf{F}})$ [eV/$\AA$]'
         time = np.arange(self.traj_len)
 
-        fig, axs = plt.subplots(4, figsize=(10,12), gridspec_kw = {'wspace':0, 'hspace':0.05})
-        axs[0].plot(time, self.traj_e, '-.r',markersize=4, label='Trajectory')
-        axs[0].plot(time, self.mean_e, '.k',markersize=4, label='$\overline{NNPs}$')
+        fig, axs = plt.subplots(3, figsize=(10,12), gridspec_kw = {'wspace':0, 'hspace':0.05})
+        #axs[0].plot(time, self.traj_e, '-.r',markersize=4, label='Trajectory')
+        axs[0].plot(time, self.mean_e, color='k', markersize=4, label='$\overline{NNPs}$')
+        axs[0].fill_between(time, self.mean_e-self.sig_e, self.mean_e+self.sig_e, alpha=0.5, color='red', label='$\sigma_{E}$')
         axs[0].set_ylabel(ylabel1)
         axs[0].set_xticklabels([])
         axs[0].legend()
         axs[0].grid()
         
-        axs[1].plot(time, self.sig_e,'.k', markersize=4)
-        axs[1].plot(time[self.ind],self.sig_e[self.ind],'.', color='red', markersize=4, label='{} selected $\sigma$'.format(self.n_select))
-        axs[1].set_ylabel(ylabel2)
+        axs[1].plot(time, self.sig_f_mean,'.k', markersize=4)
+        axs[1].plot(time[self.ind],self.sig_f_mean[self.ind],'.', color='red', markersize=4, label='{} selected $\sigma$'.format(self.n_select))
+        axs[1].set_ylabel(ylabel3)
         axs[1].grid()
         axs[1].set_xticklabels([])
         axs[1].legend()
         
-        axs[2].plot(time, self.sig_f_mean,'.k', markersize=4)
-        axs[2].plot(time[self.ind],self.sig_f_mean[self.ind],'.', color='red', markersize=4, label='{} selected $\sigma$'.format(self.n_select))
-        axs[2].set_ylabel(ylabel3)
+        axs[2].plot(time, self.sig_f_max,'.k', markersize=4)
+        axs[2].plot(time[self.ind],self.sig_f_max[self.ind],'.', color='red', markersize=4, label='{} selected $\sigma$'.format(self.n_select))
+        axs[2].set_ylabel(ylabel4)
         axs[2].grid()
-        axs[2].set_xticklabels([])
+        axs[2].set_xlabel('Step')
         axs[2].legend()
-        
-        axs[3].plot(time, self.sig_f_max,'.k', markersize=4)
-        axs[3].plot(time[self.ind],self.sig_f_max[self.ind],'.', color='red', markersize=4, label='{} selected $\sigma$'.format(self.n_select))
-        axs[3].set_ylabel(ylabel4)
-        axs[3].grid()
-        axs[3].set_xlabel('Step')
-        axs[3].legend()
 
         plt.savefig('{}/traj_disagreement'.format(self.results_dir),dpi=100)
 

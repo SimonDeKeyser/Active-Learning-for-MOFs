@@ -16,6 +16,8 @@ from vsc_shell import VSC_shell
 #from ase.optimize.precon import Exp, PreconLBFGS
 #from ase.constraints import ExpCellFilter
 
+import logging
+logging.basicConfig(format='',level=logging.INFO)
 
 path_source = Path('/scratch/gent/437/vsc43785/cp2k') / 'SOURCEFILES'
 path_potentials = path_source / 'GTH_POTENTIALS'
@@ -111,13 +113,11 @@ parser = argparse.ArgumentParser(
 parser.add_argument("input_dir", help="Path to .xyz file to be calculated")
 parser.add_argument("output_dir", help="Path where the calculated .xyz file should be written to")
 parser.add_argument("cores", help="Amount of cores in HPC job")
-parser.add_argument("restart_conf", help="Path to a .json file containing the QbC restart parameters")
 args = parser.parse_args()
 
 input_dir = args.input_dir
 output_dir = args.output_dir
 cores = int(args.cores)
-restart_conf = args.restart_conf
 
 atoms = read(input_dir)
 calculator = CP2K(
@@ -153,18 +153,29 @@ for state in chunk:
 with open(output_dir, 'w') as f:
     write_extxyz(f, chunk)
 
-config = Config.from_file(restart_conf)
-runs_dir = Path('../').resolve()
+md_dir = (Path.cwd() / '../../').resolve()
+p = md_dir.glob('**/*/calculated_data.xyz')
+n_ready = len([x for x in p])
+p = md_dir.glob('*')
+n_total = len([x for x in p if x.is_dir()])
 
-with open('../cycle{}_restart.sh'.format(config.cycle),'w') as rsh:
-    rsh.write(
-        '#!/bin/sh'
-        '\n\n#PBS -l walltime={}'
-        '\n#PBS -l nodes=1:ppn={}:gpus=1'
-        '\n\nsource ~/.{}'
-        '\npython ../train.py {} {} --traj-index {} --cp2k-restart {}'.format(config.walltime, config.cores, config.env, config.cycle, config.walltime, config.traj_index, True)
-    )
+if n_total == n_ready:
+    logging.info('All QbCs are ready, restarting training...')
+    config = Config.from_file(str(Path.cwd() / '../../../' / 'params.yaml'), 'yaml')
+    runs_dir = (Path.cwd() / '../../../../../' / 'QbC' / 'runs').resolve()
 
-shell = VSC_shell(ssh_keys.HOST, ssh_keys.USERNAME, ssh_keys.PASSWORD, ssh_keys.KEY_FILENAME)
-shell.submit_job(config.cluster, runs_dir, 'cycle{}_restart.sh'.format(config.cycle))
-shell.__del__()
+    with open(runs_dir / 'cycle{}_restart.sh'.format(config.cycle),'w') as rsh:
+        rsh.write(
+            '#!/bin/sh'
+            '\n\n#PBS -l walltime={}'
+            '\n#PBS -l nodes=1:ppn={}:gpus=1'
+            '\n\nsource ~/.{}'
+            '\npython ../train.py {} {} --traj-index {} --cp2k-restart {}'.format(config.walltime, config.cores, config.env, config.cycle, config.walltime, config.traj_index, True)
+        )
+
+    shell = VSC_shell(ssh_keys.HOST, ssh_keys.USERNAME, ssh_keys.PASSWORD, ssh_keys.KEY_FILENAME)
+    shell.submit_job(config.cluster, runs_dir, 'cycle{}_restart.sh'.format(config.cycle))
+    shell.__del__()
+
+else:
+  logging.info('Only {} of {} QbC new training data is calculated, waiting...'.format(n_ready, n_total))

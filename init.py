@@ -31,13 +31,13 @@ Parameters:
 root = Path('../').resolve()
 head_dir = root / 'qbc_train'
 len_models = 4
-wandb_project = 'q4_random10_full'
-n_train = 10
-n_val = 1
-walltime = '00:10:00'
+wandb_project = 'q4_MOFs'
+n_train = 665
+n_val = 70
+walltime = '04:00:00'
 cluster = 'accelgor'
 env = 'torchenv_stress_accelgor'
-cores = '12' # should be 12 when using accelgor
+cores = '12'
 
 ##########################################################################################
 

@@ -3,6 +3,12 @@ import time
 start = time.time()
 from dataclasses import dataclass
 
+import sys
+if sys.version_info[1] >= 8:
+    from typing import Final
+else:
+    from typing_extensions import Final
+
 from pathlib import Path, PosixPath
 import logging
 import shutil
@@ -13,7 +19,25 @@ from datetime import timedelta
 
 import ase.io
 from nequip.utils import Config
+from nequip.scripts.train import _set_global_options
+from nequip.train import Trainer
+from nequip.utils import Config
+from nequip.utils.versions import check_code_version, get_config_code_versions
 import pandas as pd
+import numpy as np
+import torch
+from e3nn.util.jit import script
+
+CONFIG_KEY: Final[str] = "config"
+NEQUIP_VERSION_KEY: Final[str] = "nequip_version"
+TORCH_VERSION_KEY: Final[str] = "torch_version"
+E3NN_VERSION_KEY: Final[str] = "e3nn_version"
+CODE_COMMITS_KEY: Final[str] = "code_commits"
+R_MAX_KEY: Final[str] = "r_max"
+N_SPECIES_KEY: Final[str] = "n_species"
+TYPE_NAMES_KEY: Final[str] = "type_names"
+JIT_BAILOUT_KEY: Final[str] = "_jit_bailout_depth"
+TF32_KEY: Final[str] = "allow_tf32"
 
 try:
     import ssh_keys
@@ -70,9 +94,121 @@ class QbC_trainer:
 
         self.name = 'cycle{}'.format(self.cycle)
         self.cycle_dir = self.head_dir / self.name
+        if not self.cycle_dir.exists():
+            self.cycle_dir.mkdir()
+            logging.info('Created cycle directory: \n{}'.format(self.cycle_dir))
         self.dataset_dir = self.cycle_dir / 'data.xyz'
         self.input_dir = self.cycle_dir / 'new_data.xyz'
-        self.output_dir = self.cycle_dir / 'calc_data.xyz'
+        self.output_dir = self.cycle_dir / 'calculated_data.xyz'
+
+    def deploy(self, train_dir):
+        config = Config.from_file(str(train_dir / "config.yaml"))
+        _set_global_options(config)
+        check_code_version(config)
+        model, _ = Trainer.load_model_from_training_session(
+            train_dir, model_name="best_model.pth", device="cpu"
+        )
+
+        model.eval()
+        if not isinstance(model, torch.jit.ScriptModule):
+            model = script(model)
+        logging.info("Compiled & optimized model.")
+
+        metadata: dict = {}
+        code_versions, code_commits = get_config_code_versions(config)
+        for code, version in code_versions.items():
+            metadata[code + "_version"] = version
+        if len(code_commits) > 0:
+            metadata[CODE_COMMITS_KEY] = ";".join(
+                f"{k}={v}" for k, v in code_commits.items()
+            )
+
+        metadata[R_MAX_KEY] = str(float(config["r_max"]))
+        if "allowed_species" in config:
+            # This is from before the atomic number updates
+            n_species = len(config["allowed_species"])
+            type_names = {
+                type: ase.data.chemical_symbols[atomic_num]
+                for type, atomic_num in enumerate(config["allowed_species"])
+            }
+        else:
+            # The new atomic number setup
+            n_species = str(config["num_types"])
+            type_names = config["type_names"]
+        metadata[N_SPECIES_KEY] = str(n_species)
+        metadata[TYPE_NAMES_KEY] = " ".join(type_names)
+
+        metadata[JIT_BAILOUT_KEY] = str(config["_jit_bailout_depth"])
+        metadata[TF32_KEY] = str(int(config["allow_tf32"]))
+        metadata[CONFIG_KEY] = (train_dir / "config.yaml").read_text()
+
+        metadata = {k: v.encode("ascii") for k, v in metadata.items()}
+        torch.jit.save(model, train_dir / 'deployed.pth', _extra_files=metadata)
+
+
+    def create_trajectories(self):
+        config = Config()
+        config.cycle = self.cycle
+        config.walltime = self.walltime
+        config.cores = self.cores
+        config.traj_index = self.traj_index
+        config.env = self.env
+        config.cluster = self.cluster
+        config.cp2k_walltime = self.cp2k_walltime
+        config.cp2k_cores = self.cp2k_cores
+        config.cp2k_cluster = self.cp2k_cluster
+        config.save(str(self.cycle_dir / 'params.yaml'), 'yaml')
+
+        p = (self.prev_nequip_train_dir).glob('*')
+        model_dirs = [x for x in p if (x.is_dir() and x.name[:5] == 'model')]
+
+        best_mae = 100
+        best_model = None
+        logging.info('Deploying all models and finding best NNP model for MD:')
+        for model_dir in sorted(model_dirs):
+            logging.info(model_dir.name)
+            metrics = pd.read_csv(model_dir / 'metrics_epoch.csv')
+            clean_df = metrics[metrics[' wall'] != ' wall']
+            mae = clean_df[' validation_all_f_mae'].to_numpy(dtype=np.float64).min()
+            logging.info('{} eV/A'.format(mae))
+            if mae < best_mae:
+                best_mae = mae
+                best_model = model_dir
+            if not (model_dir / 'deployed.pth').exists():
+                self.deploy(model_dir)
+
+        logging.info('Best model for MD simulations: {}'.format(best_model.name))
+        
+        p = Path(self.traj_dir).glob('**/*.xyz')
+        traj_files = [x for x in p]
+
+        md_dir = self.cycle_dir / 'MD'
+        if not md_dir.exists():
+            md_dir.mkdir()
+
+        logging.info('\nStarting MD job:')
+        shell = VSC_shell(ssh_keys.HOST, ssh_keys.USERNAME, ssh_keys.PASSWORD, ssh_keys.KEY_FILENAME)
+        i = 0
+        for f in sorted(traj_files):
+            logging.info('\t - {}'.format(f.name))
+            job_dir = md_dir / f.name[:-4]
+            if not job_dir.exists():
+                job_dir.mkdir()
+            with open(job_dir / 'job.sh' ,'w') as rsh:
+                rsh.write(
+                    '#!/bin/sh'
+                    '\n\n#PBS -o output.txt'
+                    '\n#PBS -e error.txt'
+                    '\n#PBS -l walltime=01:00:00'
+                    '\n#PBS -l nodes=1:ppn=12'
+                    '\n\nsource ~/.cp2kenv'
+                    '\npython ../../../../QbC/md.py {} {} {}'.format(best_model / 'deployed.pth', f, self.n_select)
+                )
+            shell.submit_job(self.cp2k_cluster, job_dir.resolve(), 'job.sh')
+            i += 1
+            if i ==2:
+                break
+        shell.__del__()
 
     def adverserial_attack(self):
         cnnp = CNNP(self.prev_nequip_train_dir).load_models_from_nequip_training(attack=True)
@@ -95,10 +231,9 @@ class QbC_trainer:
 
     def query(self):
         cnnp = CNNP(self.prev_nequip_train_dir).load_models_from_nequip_training()
-        committee = QbC(name=self.name, cnnp=cnnp, traj_dir=self.traj_dir, results_dir=self.head_dir,
+        committee = QbC(results_dir=self.cycle_dir, cnnp=cnnp, traj_dir=self.traj_dir,
                         traj_index=self.traj_index, n_select=self.n_select
                         )
-        assert self.cycle_dir.is_dir(), 'Something went wrong in the qbc class'
 
         if not self.load_query_results:
             committee.evaluate_committee(save=True)

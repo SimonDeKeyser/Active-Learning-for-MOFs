@@ -49,8 +49,8 @@ Parameters:
 
 root = Path('../../').resolve() # starting the run from /runs folder
 head_dir = root / 'qbc_train'
-traj_dir = head_dir / 'MD_304_traj.xyz'                                                                                                                             
-n_select = 2
+traj_dir = root / 'data'                                                                                                                             
+n_select = 10
 n_val_0 = 1                                                                
 n_val_add = 1
 max_epochs = 50000   
@@ -117,10 +117,11 @@ if cp2k_restart:
     #    Trainer.start_next_cyle()
 
 elif (not cp2k_restart) and Trainer.cp2k:
-    Trainer.query()
+    Trainer.create_trajectories()
 
 else:
-    Trainer.query()
-    Trainer.restart_training()
-    if not Trainer.send_hpc_run:
-        Trainer.start_next_cyle()
+    Trainer.create_trajectories()
+    #Trainer.query()
+    #Trainer.restart_training()
+    #if not Trainer.send_hpc_run:
+    #    Trainer.start_next_cyle()
