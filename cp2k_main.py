@@ -24,13 +24,28 @@ path_potentials = path_source / 'GTH_POTENTIALS'
 path_basis      = path_source / 'BASISSETS'
 path_dispersion = path_source / 'dftd3.dat'
 
+parser = argparse.ArgumentParser(
+        description="Calculate new datapoints."
+    )
+parser.add_argument("input_dir", help="Path to .xyz file to be calculated")
+parser.add_argument("output_dir", help="Path where the calculated .xyz file should be written to")
+parser.add_argument("cores", help="Amount of cores in HPC job")
+parser.add_argument("--mult", help="Amount of cores in HPC job")
+args = parser.parse_args()
+
+if args.mult is None:
+    mult = 1
+    uks = False
+else:
+    mult = args.mult
+    uks = True
+
 additional_input = '''
  &FORCE_EVAL
    &DFT
      BASIS_SET_FILE_NAME  {}
      POTENTIAL_FILE_NAME  {}
-     UKS  F
-     MULTIPLICITY  1
+     MULTIPLICITY  {}
      &SCF
        MAX_SCF  25
        MAX_DIIS  8
@@ -88,6 +103,16 @@ additional_input = '''
        BASIS_SET TZVP-MOLOPT-SR-GTH
        POTENTIAL GTH-PBE-q3
      &END KIND
+     &KIND Ga
+       ELEMENT  Ga
+       BASIS_SET TZVP-MOLOPT-SR-GTH
+       POTENTIAL GTH-PBE-q13
+     &END KIND
+     &KIND V
+       ELEMENT  V
+       BASIS_SET TZVP-MOLOPT-SR-GTH
+       POTENTIAL GTH-PBE-q13
+     &END KIND
      &KIND O
        ELEMENT  O
        BASIS_SET TZVP-MOLOPT-GTH
@@ -98,6 +123,11 @@ additional_input = '''
        BASIS_SET TZVP-MOLOPT-GTH
        POTENTIAL GTH-PBE-q4
      &END KIND
+     &KIND F
+       ELEMENT  F
+       BASIS_SET TZVP-MOLOPT-GTH
+       POTENTIAL GTH-PBE-q7
+     &END KIND
      &KIND H
        ELEMENT  H
        BASIS_SET TZVP-MOLOPT-GTH
@@ -105,15 +135,7 @@ additional_input = '''
      &END KIND
    &END SUBSYS
  &END FORCE_EVAL
-        '''.format(path_basis, path_potentials, path_dispersion)
-
-parser = argparse.ArgumentParser(
-        description="Calculate new datapoints."
-    )
-parser.add_argument("input_dir", help="Path to .xyz file to be calculated")
-parser.add_argument("output_dir", help="Path where the calculated .xyz file should be written to")
-parser.add_argument("cores", help="Amount of cores in HPC job")
-args = parser.parse_args()
+        '''.format(path_basis, path_potentials, mult, path_dispersion)
 
 input_dir = args.input_dir
 output_dir = args.output_dir
@@ -127,7 +149,7 @@ calculator = CP2K(
         command='mpirun -np {} cp2k_shell.psmp'.format(cores),
         cutoff=1000 * ase.units.Rydberg,
         stress_tensor=True,
-        uks=False,
+        uks=uks,
         print_level='LOW',
         inp=additional_input,
         pseudo_potential=None,
@@ -149,12 +171,13 @@ for state in chunk:
     state.arrays['forces'] = atoms.get_forces()
     state.info['stress'] = voigt_6_to_full_3x3_stress(atoms.get_stress())
     state.info['energy'] = atoms.get_potential_energy()
+    with open(output_dir, 'w') as f:
+        write_extxyz(f, chunk)
 
-with open(output_dir, 'w') as f:
-    write_extxyz(f, chunk)
+open('../finished', 'w').close()
 
 md_dir = (Path.cwd() / '../../').resolve()
-p = md_dir.glob('**/*/calculated_data.xyz')
+p = md_dir.glob('**/*/finished')
 n_ready = len([x for x in p])
 p = md_dir.glob('*')
 n_total = len([x for x in p if x.is_dir()])
@@ -170,7 +193,7 @@ if n_total == n_ready:
             '\n\n#PBS -l walltime={}'
             '\n#PBS -l nodes=1:ppn={}:gpus=1'
             '\n\nsource ~/.{}'
-            '\npython ../train.py {} {} --traj-index {} --cp2k-restart {}'.format(config.walltime, config.cores, config.env, config.cycle, config.walltime, config.traj_index, True)
+            '\npython ../train.py {} {} --cp2k-restart {}'.format(config.walltime, config.cores, config.env, config.cycle, config.walltime, True)
         )
 
     shell = VSC_shell(ssh_keys.HOST, ssh_keys.USERNAME, ssh_keys.PASSWORD, ssh_keys.KEY_FILENAME)
@@ -178,4 +201,4 @@ if n_total == n_ready:
     shell.__del__()
 
 else:
-  logging.info('Only {} of {} QbC new training data is calculated, waiting...'.format(n_ready, n_total))
+    logging.info('Only {} of {} QbC new training data is calculated, waiting...'.format(n_ready, n_total))

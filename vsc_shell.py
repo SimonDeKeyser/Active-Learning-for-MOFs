@@ -80,6 +80,16 @@ class VSC_shell:
         _, shout, sherr = self.execute('qsub {} -d $(pwd)'.format(jobfile))
 
         if sherr == []:
-            logging.info('Sucessfully submitted job: {}'.format(shout[0]))
+            logging.info('Successfully submitted job: {}'.format(shout[0]))
+        else:
+            logging.info(sherr)
+
+    def start_sh(self, cluster, rundir, jobfile):
+        self.swap_cluster(cluster)
+        _, _, _ = self.execute('cd {}'.format(rundir))
+        _, shout, sherr = self.execute('bash {}'.format(jobfile))
+
+        if sherr == []:
+            logging.info('Successfully started .sh: {}'.format(shout[0]))
         else:
             logging.info(sherr)

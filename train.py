@@ -1,11 +1,9 @@
-from distutils.log import set_verbosity
-import time
-start_time = time.time()
+from time import perf_counter
+start_time = perf_counter()
 
-from pathlib import Path, PosixPath
+from pathlib import Path
 import argparse
 import datetime as dt
-from datetime import timedelta
 
 from trainer import QbC_trainer
 
@@ -51,22 +49,13 @@ root = Path('../../').resolve() # starting the run from /runs folder
 head_dir = root / 'qbc_train'
 traj_dir = root / 'data'                                                                                                                             
 n_select = 10
-n_val_0 = 1                                                                
 n_val_add = 1
-max_epochs = 50000   
-send_hpc_run = False                                                                 
-walltime_per_model_add = dt.timedelta(minutes=10)
-load_query_results = False
-prop = 'forces'
-red = 'mean'
-max_index = 3500
-cluster = 'accelgor'
-env = 'torchenv_stress_accelgor'
-cores = '12' # should be 12 when using accelgor
+send_hpc_run = True                                                                 
+walltime_per_model_add = dt.timedelta(minutes=60)
+cores = 12
 cp2k = True
 cp2k_cores = 24
 cp2k_walltime = '01:00:00'
-cp2k_qbc_walltime = '00:10:00'
 
 ##########################################################################################
 
@@ -86,42 +75,32 @@ else:
 Trainer = QbC_trainer(
     cycle = cycle,
     walltime = walltime,
-    start_time = start_time,
     root = root,
     head_dir = head_dir,
     traj_dir = traj_dir,                                                                                                              
     n_select = n_select,
-    n_val_0 = n_val_0,                                                           
     n_val_add = n_val_add,              
-    max_epochs = max_epochs,              
     send_hpc_run = send_hpc_run,                                                                          
     walltime_per_model_add = walltime_per_model_add,              
-    load_query_results = load_query_results,              
-    prop = prop,              
-    red = red,              
-    max_index = max_index,              
-    cluster = cluster,              
-    env = env,              
     cores = cores,              
-    cp2k = cp2k,              
     cp2k_cores = cp2k_cores,              
     cp2k_walltime = cp2k_walltime,
-    cp2k_qbc_walltime = cp2k_qbc_walltime,              
-    traj_index = traj_index,              
-    cp2k_restart = cp2k_restart            
+    traj_index = traj_index              
 )
+Trainer.start_time = start_time
 
 if cp2k_restart:
+    Trainer.dataset_from_md()
     Trainer.restart_training()
-    #if not Trainer.send_hpc_run:
-    #    Trainer.start_next_cyle()
+    if not Trainer.send_hpc_run:
+        Trainer.start_next_cyle(md=True)
 
-elif (not cp2k_restart) and Trainer.cp2k:
+elif (not cp2k_restart) and cp2k:
     Trainer.create_trajectories()
 
 else:
-    Trainer.create_trajectories()
-    #Trainer.query()
-    #Trainer.restart_training()
-    #if not Trainer.send_hpc_run:
-    #    Trainer.start_next_cyle()
+    Trainer.query()
+    Trainer.dataset_from_traj()
+    Trainer.restart_training()
+    if not Trainer.send_hpc_run:
+        Trainer.start_next_cyle()

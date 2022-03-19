@@ -31,11 +31,12 @@ parser.add_argument("model", help='Path to deployed model .pth file')
 parser.add_argument("atoms", help='Path to optimized atoms .xyz file')
 parser.add_argument("n_select", help="The amount of structures to select with QbC")
 args = parser.parse_args()
+
 ##########################################################################################
 
 MD_runs = 2
 MD_steps = 100
-eps = 5e-2
+S_eps = 5e-2
 T = 300
 dt = 1
 
@@ -70,18 +71,18 @@ if not traj_dir.exists():
     traj_dir.mkdir()
 
 for i in range(MD_runs):
-    S = make_sym_matrix(np.random.uniform(-eps, eps, 6))
+    S = make_sym_matrix(np.random.uniform(-S_eps, S_eps, 6))
     atoms = strain_cell_sampling(init, S)
     atoms.set_calculator(calc=calc)
     
     MaxwellBoltzmannDistribution(atoms=atoms, temp=T * kB)
-    #dyn = Langevin(atoms, timestep=dt * fs, friction = 0.002,
-    #        temperature_K = T,
-    #        trajectory= str(traj_dir / '{}.traj'.format(i)), 
-    #        logfile= str(traj_dir / '{}.log'.format(i)), loginterval=10
-    #        )
+    dyn = Langevin(atoms, timestep=dt * fs, friction = 0.002,
+            temperature_K = T,
+            trajectory= str(traj_dir / '{}.traj'.format(i)), 
+            logfile= str(traj_dir / '{}.log'.format(i)), loginterval=10
+            )
 
-    #dyn.run(MD_steps)
+    dyn.run(MD_steps)
 
 p = traj_dir.glob('*.traj')
 traj_files = [x for x in p]

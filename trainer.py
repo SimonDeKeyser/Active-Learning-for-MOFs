@@ -1,6 +1,4 @@
-from distutils.log import set_verbosity
-import time
-start = time.time()
+from time import perf_counter
 from dataclasses import dataclass
 
 import sys
@@ -53,12 +51,10 @@ logging.basicConfig(format='',level=logging.INFO)
 class QbC_trainer:
     cycle: int
     walltime: timedelta
-    start_time: float
     root: PosixPath = Path('../../').resolve()
     head_dir: PosixPath = root / 'qbc_train'
     traj_dir: PosixPath = head_dir / 'trajectory.xyz'                                                                                                                             
     n_select: int = 11
-    n_val_0: int = 1                                                                
     n_val_add: int = 1
     max_epochs: int = 50000   
     send_hpc_run: bool = False                                                                 
@@ -69,13 +65,10 @@ class QbC_trainer:
     max_index: int = 3500
     cluster: str = 'accelgor'
     env: str = 'torchenv_stress_accelgor'
-    cores: str = '12' # should be 12 when using accelgor
-    cp2k: bool = False
+    cores: int = 12
     cp2k_cores: int = 24
     cp2k_walltime: str = '01:00:00'
-    cp2k_qbc_walltime: str = '00:10:00'
     traj_index: str = ':'
-    cp2k_restart: bool = False
     cp2k_cluster: str = 'doduo'
 
     def __post_init__(self):
@@ -84,6 +77,7 @@ class QbC_trainer:
         logging.info('\t\t# CYCLE {} #'.format(self.cycle))
         logging.info('\t\t###########\n')
 
+        self.start_time = None
         assert self.head_dir.exists(), 'Head directory does not exist'
         assert self.traj_dir.exists(), 'Trajectory path does not exist'
         prev_name = 'cycle{}'.format(self.cycle-1)
@@ -154,6 +148,7 @@ class QbC_trainer:
         config.traj_index = self.traj_index
         config.env = self.env
         config.cluster = self.cluster
+        config.walltime_per_model_add = self.walltime_per_model_add
         config.cp2k_walltime = self.cp2k_walltime
         config.cp2k_cores = self.cp2k_cores
         config.cp2k_cluster = self.cp2k_cluster
@@ -174,8 +169,7 @@ class QbC_trainer:
             if mae < best_mae:
                 best_mae = mae
                 best_model = model_dir
-            if not (model_dir / 'deployed.pth').exists():
-                self.deploy(model_dir)
+            self.deploy(model_dir)
 
         logging.info('Best model for MD simulations: {}'.format(best_model.name))
         
@@ -242,39 +236,10 @@ class QbC_trainer:
 
         new_datapoints = committee.select_data(prop=self.prop, red=self.red)
         committee.plot_traj_disagreement()
+ 
+        ase.io.write(self.output_dir, new_datapoints, format='extxyz')
 
-        if self.cp2k:
-            ase.io.write(self.input_dir, new_datapoints, format='extxyz')
-            if not Path('cycle{}_cp2k'.format(self.cycle)).exists():
-                Path('cycle{}_cp2k'.format(self.cycle)).mkdir()
-            cp2k_dir = Path('cycle{}_cp2k'.format(self.cycle))
-            restart_conf = cp2k_dir / 'restart.yaml'
-            with open('cycle{}_cp2k/job.sh'.format(self.cycle),'w') as rsh:
-                rsh.write(
-                    '#!/bin/sh'
-                    '\n\n#PBS -o output.txt'
-                    '\n#PBS -e error.txt'
-                    '\n#PBS -l walltime={}'
-                    '\n#PBS -l nodes=1:ppn={}'
-                    '\n\nsource ~/.cp2kenv'
-                    '\npython ../../cp2k_main.py {} {} {} {}'.format(self.cp2k_walltime, self.cp2k_cores, str(self.input_dir), str(self.output_dir), self.cp2k_cores, 'restart.yaml')
-                )
-            config = Config()
-            config.cycle = self.cycle
-            config.walltime = self.walltime
-            config.cores = self.cores
-            config.traj_index = self.traj_index
-            config.env = self.env
-            config.cluster = self.cluster
-            config.save(str(restart_conf), 'yaml')
-
-            shell = VSC_shell(ssh_keys.HOST, ssh_keys.USERNAME, ssh_keys.PASSWORD, ssh_keys.KEY_FILENAME)
-            shell.submit_job(self.cp2k_cluster, cp2k_dir.resolve(), 'job.sh')
-            shell.__del__()
-        else:  
-            ase.io.write(self.output_dir, new_datapoints, format='extxyz')
-
-    def make_config(self):
+    def make_config(self, prev_n_train, prev_n_val):
         config = Config()
 
         config.root = str(self.nequip_train_dir)
@@ -285,8 +250,8 @@ class QbC_trainer:
 
         config.wandb_resume = True
 
-        config.n_train = self.dataset_len - self.n_val_0 - self.cycle*self.n_val_add
-        config.n_val = self.n_val_0 + self.cycle*self.n_val_add
+        config.n_train = prev_n_train + self.n_train_added
+        config.n_val = prev_n_val + self.n_val_added
 
         config.max_epochs = self.max_epochs
         config.lr_scheduler_name = 'none'
@@ -294,63 +259,91 @@ class QbC_trainer:
         return config
     
     def run_hpc_job(self, hpc_run_dir, train_dir, config_dir):
-        with open(hpc_run_dir / 'run.sh','w') as rsh:
+        with open(hpc_run_dir / 'job.sh','w') as rsh:
             rsh.write(
                 '#!/bin/sh'
-                '\n\n#PBS -l walltime={}'
+                '\n\n#PBS -o output.txt'
+                '\n#PBS -e error.txt'
+                '\n#PBS -l walltime={}'
                 '\n#PBS -l nodes=1:ppn={}:gpus=1'
                 '\n\nsource ~/.{}'
-                '\npython ../restart.py {} --update-config {}'.format(str(self.walltime), self.cores, self.env, train_dir, config_dir)
+                '\npython ../../../../QbC/restart.py {} --update-config {} --walltime {}'.format(str(self.walltime), self.cores, self.env, train_dir, config_dir, str(self.walltime))
             )
 
-        os.system('module swap cluster/{}; qsub {} -d $(pwd) -e {} -o {}'.format(self.cluster, hpc_run_dir / 'run.sh', hpc_run_dir / 'error', hpc_run_dir / 'output'))
+        os.system('module swap cluster/{}; cd {}; qsub job.sh -d $(pwd)'.format(self.cluster, hpc_run_dir))
 
-    def restart_training(self):
+    def dataset_from_md(self):
+        prev_dataset = ase.io.read(self.prev_dataset_dir, format='extxyz',index=':')
+        md_dir = self.cycle_dir / 'MD'
+        p = md_dir.glob('**/*/calculated_data.xyz')
+        len_train_add = self.n_select - self.n_val_add
+        logging.info('Creating new dataset from MD trajectories:')
+        train_add = []
+        val_add = []
+        for file in p:
+            logging.info('*\t {}'.format(file.parts[-2]))
+            new_datapoints = ase.io.read(file, index = ':', format='extxyz')
+            random.shuffle(new_datapoints)
+            train_add += new_datapoints[:len_train_add]
+            val_add += new_datapoints[len_train_add:]
+        new_dataset = train_add + prev_dataset + val_add
+
+        self.n_train_added = len(train_add)
+        self.n_val_added = len(val_add)
+        ase.io.write(self.dataset_dir, new_dataset, format='extxyz')
+        logging.info('Saved the new dataset of length {}'.format(len(new_dataset)))
+
+    def dataset_from_traj(self):
         new_datapoints = ase.io.read(self.output_dir, index = ':', format='extxyz')
         prev_dataset = ase.io.read(self.prev_dataset_dir, format='extxyz',index=':')
         assert self.n_val_add < self.n_select, 'No training points added but only validation points'
         len_train_add = self.n_select - self.n_val_add
         random.shuffle(new_datapoints)
         new_dataset = new_datapoints[:len_train_add] + prev_dataset + new_datapoints[len_train_add:]
-        self.dataset_len = len(new_dataset)
 
+        self.n_train_added = len(len_train_add)
+        self.n_val_added = len(new_datapoints) - len(len_train_add)
         ase.io.write(self.dataset_dir, new_dataset, format='extxyz')
         logging.info('Saved the new dataset of length {}'.format(len(new_dataset)))
 
+    def restart_training(self):
         self.nequip_train_dir = self.cycle_dir / 'results'
         if not self.nequip_train_dir.exists():
             self.nequip_train_dir.mkdir()
 
-        p = Path(self.prev_nequip_train_dir).glob('*')
+        p = Path(self.prev_nequip_train_dir).glob('model*')
         model_files = [x for x in p if x.is_dir()]
 
         self.len_models = 0
         for file in sorted(model_files):
-            if 'model' in file.name:
-                self.len_models += 1
-                if not (self.nequip_train_dir / file.name).exists():
-                    shutil.copytree(file, self.nequip_train_dir / file.name)
-                    logging.info('Copying NequIP train folder of {}'.format(file.name))
+            self.len_models += 1
+            if not (self.nequip_train_dir / file.name).exists():
+                shutil.copytree(file, self.nequip_train_dir / file.name)
+                logging.info('Copying NequIP train folder of {}'.format(file.name))
 
         hpc_dir = self.cycle_dir / 'hpc'
         if not hpc_dir.exists():
             hpc_dir.mkdir()
 
         if not self.send_hpc_run:
-            elapsed_t = time.time()-self.start_time
+            elapsed_t = perf_counter()-self.start_time
             left_t = self.walltime.seconds - elapsed_t
             logging.info('\n## {} hours left over of HPC walltime'.format(round(left_t/3600,3)))
             t_per_model = left_t/self.len_models
             logging.info('## Each of the {} models will train {} hours'.format(self.len_models,round(t_per_model/3600,3)))
 
-        p = Path(self.nequip_train_dir).glob('*')
+        p = Path(self.nequip_train_dir).glob('model*')
         model_files = [x for x in p if x.is_dir()]
 
         for file in sorted(model_files):
             if 'model' in file.name:
                 logging.info('\n###################################################################################################\n')
                 logging.info('Starting retraining of {}\n'.format(file.name))
-                config = self.make_config()
+                prev_config = Config.from_file(str(self.prev_nequip_train_dir/ file.name / 'config.yaml'), 'yaml')
+                prev_n_train = prev_config.n_train
+                prev_n_val = prev_config.n_val
+
+                config = self.make_config(prev_n_train, prev_n_val)
 
                 hpc_run_dir = hpc_dir / file.name
                 if not hpc_run_dir.exists():
@@ -364,19 +357,11 @@ class QbC_trainer:
                 else:
                     os.system('timeout {} python ../restart.py {} --update-config {}'.format(t_per_model-3,train_dir,config_dir))
                     logging.info('\n###################################################################################################')
-                    logging.info('\nTotal elapsed time: {} hours of total {} hours'.format(round((time.time()-self.start_time)/3600,3),round(self.walltime.seconds/3600,3)))
+                    logging.info('\nTotal elapsed time: {} hours of total {} hours'.format(round((perf_counter()-self.start_time)/3600,3),round(self.walltime.seconds/3600,3)))
                     
-    def start_next_cyle(self):
-        old = self.traj_index.split(':')
-        old_len = int(old[1]) - int(old[0])
-        index = '{}:{}'.format(int(old[0])+old_len, int(old[1])+old_len)        
+    def start_next_cyle(self, md=False):
         next_walltime = self.walltime + self.len_models*self.walltime_per_model_add
-        if self.cp2k:
-            first_walltime = self.cp2k_qbc_walltime
-        else:
-            first_walltime = next_walltime
-
-        if int(old[1])+old_len <= self.max_index:
+        if md:
             with open('cycle{}.sh'.format(self.cycle+1),'w') as rsh:
                 rsh.write(
                     '#!/bin/sh'
@@ -385,6 +370,24 @@ class QbC_trainer:
                     '\n#PBS -l walltime={}'
                     '\n#PBS -l nodes=1:ppn={}:gpus=1'
                     '\n\nsource ~/.{}'
-                    '\npython ../train.py {} {} --traj-index {}'.format(self.cycle+1, self.cycle+1, str(first_walltime), self.cores, self.env, self.cycle+1, str(next_walltime), index)
+                    '\npython ../train.py {} {}'.format(self.cycle+1, self.cycle+1, str(next_walltime), self.cores, self.env, self.cycle+1, str(next_walltime))
                 )
-            os.system('module swap cluster/{}; qsub cycle{}.sh -d $(pwd)'.format(self.cluster, self.cycle+1))
+            os.system('module swap cluster/{}; bash cycle{}.sh'.format(self.cluster, self.cycle+1))
+
+        else:
+            old = self.traj_index.split(':')
+            old_len = int(old[1]) - int(old[0])
+            index = '{}:{}'.format(int(old[0])+old_len, int(old[1])+old_len)        
+
+            if int(old[1])+old_len <= self.max_index:
+                with open('cycle{}.sh'.format(self.cycle+1),'w') as rsh:
+                    rsh.write(
+                        '#!/bin/sh'
+                        '\n\n#PBS -o cycle{}_o.txt'
+                        '\n#PBS -e cycle{}_e.txt'
+                        '\n#PBS -l walltime={}'
+                        '\n#PBS -l nodes=1:ppn={}:gpus=1'
+                        '\n\nsource ~/.{}'
+                        '\npython ../train.py {} {} --traj-index {}'.format(self.cycle+1, self.cycle+1, str(next_walltime), self.cores, self.env, self.cycle+1, str(next_walltime), index)
+                    )
+                os.system('module swap cluster/{}; qsub cycle{}.sh -d $(pwd)'.format(self.cluster, self.cycle+1))
