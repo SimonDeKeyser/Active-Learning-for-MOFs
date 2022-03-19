@@ -182,7 +182,6 @@ class QbC_trainer:
 
         logging.info('\nStarting MD job:')
         shell = VSC_shell(ssh_keys.HOST, ssh_keys.USERNAME, ssh_keys.PASSWORD, ssh_keys.KEY_FILENAME)
-        i = 0
         for f in sorted(traj_files):
             logging.info('\t - {}'.format(f.name))
             job_dir = md_dir / f.name[:-4]
@@ -193,15 +192,13 @@ class QbC_trainer:
                     '#!/bin/sh'
                     '\n\n#PBS -o output.txt'
                     '\n#PBS -e error.txt'
-                    '\n#PBS -l walltime=01:00:00'
+                    '\n#PBS -l walltime=01:30:00'
                     '\n#PBS -l nodes=1:ppn=12'
                     '\n\nsource ~/.cp2kenv'
                     '\npython ../../../../QbC/md.py {} {} {}'.format(best_model / 'deployed.pth', f, self.n_select)
                 )
             shell.submit_job(self.cp2k_cluster, job_dir.resolve(), 'job.sh')
-            i += 1
-            if i ==2:
-                break
+
         shell.__del__()
 
     def adverserial_attack(self):

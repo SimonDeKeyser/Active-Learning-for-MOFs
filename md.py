@@ -34,8 +34,8 @@ args = parser.parse_args()
 
 ##########################################################################################
 
-MD_runs = 2
-MD_steps = 100
+MD_runs = 5
+MD_steps = 1000
 S_eps = 5e-2
 T = 300
 dt = 1
@@ -81,8 +81,10 @@ for i in range(MD_runs):
             trajectory= str(traj_dir / '{}.traj'.format(i)), 
             logfile= str(traj_dir / '{}.log'.format(i)), loginterval=10
             )
-
-    dyn.run(MD_steps)
+    try:
+        dyn.run(MD_steps)
+    except:
+        pass
 
 p = traj_dir.glob('*.traj')
 traj_files = [x for x in p]
