@@ -131,6 +131,7 @@ class QbC:
         self.cnnp.config.root = str(self.results_dir)
         self.traj = dataset_from_config(self.cnnp.config, prefix='dataset')
         self.traj_len = len(self.traj)
+        self.n_atoms = np.array([data.pos.shape[0] for data in self.traj])
         logging.info('... Trajectory loaded\n')
 
     def evaluate_committee(self, save=False):
@@ -172,7 +173,7 @@ class QbC:
         if save:
             self.save()
 
-    def select_data(self, prop, red=None):
+    def select_data(self, prop, red=None, md_len=None):
         if prop != 'random':
             if prop == 'energy':
                 disagreement = self.sig_e
@@ -183,8 +184,19 @@ class QbC:
                     disagreement = self.sig_f_max 
             
             assert disagreement is not None, 'No valid disagreement metric was given'
-            part = np.argpartition(disagreement, -self.n_select)
-            ind = np.array(part[-self.n_select:])
+            if md_len is None:
+                part = np.argpartition(disagreement, -self.n_select)
+                ind = np.array(part[-self.n_select:])
+            else:
+                MD_runs = self.traj_len // md_len
+                select_per_MD = self.n_select // MD_runs
+                logging.info('Selecting {} structures from each of the {} MD trajectories'.format(select_per_MD , MD_runs))
+                ind = []
+                for i in range(MD_runs):
+                    indices = np.arange(self.traj_len)[i*md_len: (i+1)*md_len]
+                    part = np.argpartition(disagreement[indices], -select_per_MD)
+                    ind += list(np.array(part[-select_per_MD:]) + i*md_len)
+                ind = np.array(ind)
         else:
             ind = random.sample(range(len(self.traj)),self.n_select)
         assert ind is not None, 'No valid disagreement metric was given'
@@ -220,16 +232,15 @@ class QbC:
         assert self.ind is not None, 'First select indices to plot them'
         if from_results_dir:
             self.load()
-        ylabel1 = 'E [eV]'
-        ylabel2 = '$\sigma_{E}$ [eV]'
+        ylabel1 = '$E/N$ [eV/atom]'
         ylabel3 = '$\overline{\sigma_{\mathbf{F}}}$ [eV/$\AA$]'
         ylabel4 = '$max(\sigma_{\mathbf{F}})$ [eV/$\AA$]'
         time = np.arange(self.traj_len)
 
         fig, axs = plt.subplots(3, figsize=(10,12), gridspec_kw = {'wspace':0, 'hspace':0.05})
         #axs[0].plot(time, self.traj_e, '-.r',markersize=4, label='Trajectory')
-        axs[0].plot(time, self.mean_e, color='k', markersize=4, label='$\overline{NNPs}$')
-        axs[0].fill_between(time, self.mean_e-self.sig_e, self.mean_e+self.sig_e, alpha=0.5, color='red', label='$\sigma_{E}$')
+        axs[0].plot(time, self.mean_e/self.n_atoms, color='k', markersize=4, label='$\overline{NNPs}$')
+        axs[0].fill_between(time, (self.mean_e-self.sig_e)/self.n_atoms, (self.mean_e+self.sig_e)/self.n_atoms, alpha=0.5, color='red', label='$\sigma_{E}$')
         axs[0].set_ylabel(ylabel1)
         axs[0].set_xticklabels([])
         axs[0].legend()

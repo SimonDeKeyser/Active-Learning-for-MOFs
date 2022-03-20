@@ -3,6 +3,7 @@ import scipy
 import argparse
 from pathlib import Path
 
+import pandas as pd
 import ase.io
 from ase.md.velocitydistribution import MaxwellBoltzmannDistribution
 from ase.units import fs, kB, Pascal
@@ -67,10 +68,19 @@ def strain_cell_sampling(init, S):
     return new
 
 traj_dir = Path.cwd() / 'trajs'
+completed = 0
 if not traj_dir.exists():
     traj_dir.mkdir()
+else:
+    logging.info('This is a restarted run, probably because walltime exceeded')
+    p = traj_dir.glob('*.traj')
+    traj_files = [x for x in p] 
+    for traj_file in traj_files:
+        traj = Trajectory(traj_file)
+        if len(traj) >= MD_steps/10:
+            completed += 1
 
-for i in range(MD_runs):
+for i in range(MD_runs-completed):
     S = make_sym_matrix(np.random.uniform(-S_eps, S_eps, 6))
     atoms = strain_cell_sampling(init, S)
     atoms.set_calculator(calc=calc)
@@ -78,8 +88,8 @@ for i in range(MD_runs):
     MaxwellBoltzmannDistribution(atoms=atoms, temp=T * kB)
     dyn = Langevin(atoms, timestep=dt * fs, friction = 0.002,
             temperature_K = T,
-            trajectory= str(traj_dir / '{}.traj'.format(i)), 
-            logfile= str(traj_dir / '{}.log'.format(i)), loginterval=10
+            trajectory= str(traj_dir / '{}.traj'.format(i+completed)), 
+            logfile= str(traj_dir / '{}.log'.format(i+completed)), loginterval=10
             )
     try:
         dyn.run(MD_steps)
@@ -94,6 +104,7 @@ for traj_file in traj_files:
     traj = Trajectory(traj_file)
     total_traj += traj
 
+md_len = len(traj)
 ase.io.write(Path.cwd() / 'trajectory.xyz', total_traj, format='extxyz')
 
 logging.info('Committee from {}'.format(Path(args.model).parents[1]))
@@ -109,7 +120,7 @@ committee = QbC(results_dir=Path.cwd() / 'qbc',
         )
 
 committee.evaluate_committee(save=True)
-new_datapoints = committee.select_data(prop='forces', red='mean')
+new_datapoints = committee.select_data(prop='forces', red='mean', md_len=md_len)
 committee.plot_traj_disagreement()
 ase.io.write(Path.cwd() / 'new_data.xyz', new_datapoints, format='extxyz')
 
@@ -118,7 +129,6 @@ if not cp2k_dir.exists():
     cp2k_dir.mkdir()
 
 config = Config.from_file(str(Path.cwd() / '../../' / 'params.yaml'), 'yaml')
-
 with open(cp2k_dir / 'job.sh','w') as rsh:
     rsh.write(
         '#!/bin/sh'

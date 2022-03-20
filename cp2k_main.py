@@ -10,6 +10,7 @@ from cp2k_calculator import CP2K
 #from ase.io.trajectory import Trajectory
 from ase.stress import voigt_6_to_full_3x3_stress
 
+import pandas as pd
 from ase.calculators.loggingcalc import LoggingCalculator
 import ssh_keys
 from vsc_shell import VSC_shell
@@ -164,6 +165,7 @@ atoms.calc = calculator
 with open(input_dir,'r') as f:
     chunk = list(read(f, index=':'))
 
+calc_data = []
 for state in chunk:
     state.calc = None
     atoms.set_positions(state.get_positions())
@@ -171,8 +173,9 @@ for state in chunk:
     state.arrays['forces'] = atoms.get_forces()
     state.info['stress'] = voigt_6_to_full_3x3_stress(atoms.get_stress())
     state.info['energy'] = atoms.get_potential_energy()
+    calc_data.append(state)
     with open(output_dir, 'w') as f:
-        write_extxyz(f, chunk)
+        write_extxyz(f, calc_data)
 
 open('../finished', 'w').close()
 
