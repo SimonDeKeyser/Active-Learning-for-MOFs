@@ -199,9 +199,7 @@ if n_total == n_ready:
             '\npython ../train.py {} {} --cp2k-restart {}'.format(config.walltime, config.cores, config.env, config.cycle, config.walltime, True)
         )
 
-    shell = VSC_shell(ssh_keys.HOST, ssh_keys.USERNAME, ssh_keys.PASSWORD, ssh_keys.KEY_FILENAME)
-    shell.submit_job(config.cluster, runs_dir, 'cycle{}_restart.sh'.format(config.cycle))
-    shell.__del__()
+    os.system('module swap cluster/{}; cd {}; bash cycle{}_restart.sh'.format(config.cluster, runs_dir, config.cycle))
 
 else:
     logging.info('Only {} of {} QbC new training data is calculated, waiting...'.format(n_ready, n_total))

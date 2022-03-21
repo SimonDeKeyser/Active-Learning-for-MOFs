@@ -23,6 +23,8 @@ def check_MD(cycle):
             os.system('module swap cluster/{}; cd {} ;qsub job.sh -d $(pwd)'.format(config.cp2k_cluster, f))
 
 def log(cycle):
+    config = Config.from_file(str(Path.cwd() / '../qbc_train' / 'cycle{}'.format(cycle) / 'params.yaml'), 'yaml')
+    os.system('module swap cluster/{}; qstat'.format(config.cp2k_cluster))
     md_dir = Path.cwd() / '../qbc_train' / 'cycle{}'.format(cycle) / 'MD'
     p = md_dir.glob('*')
     files = [x for x in p]
@@ -39,6 +41,9 @@ def log(cycle):
             current_traj = max([int(x.name[:-5]) for x in p])
             df['MD'][f.name] = 'traj {}'.format(current_traj)
         
+        if (f / 'qbc').is_dir():
+            df['MD'][f.name] = 'QbC'
+
         if (f / 'new_data.xyz').is_file():
             df['MD'][f.name] = 'done'
 
@@ -51,10 +56,41 @@ def log(cycle):
             inp = ase.io.read(f / 'new_data.xyz', index=':')
             outp = ase.io.read(f / 'calculated_data.xyz', index=':')
             df['CP2K'][f.name] = '{}/{}'.format(len(outp), len(inp))
+    print('MD TRAJECTORIES:')
     print(df)
+    print('\n')
     #df.to_csv('/runs/cycle{}.csv'.format(cycle), sep='\t')
 
+    hpc_dir = Path.cwd() / '../qbc_train' / 'cycle{}'.format(cycle) / 'hpc'
+    if hpc_dir.is_dir():
+        os.system('module swap cluster/accelgor; qstat')
+        results_dir = hpc_dir.parents[0] / 'results'
+        p = hpc_dir.glob('*')
+        files = [x for x in p]
+        df = pd.DataFrame(columns=sorted([x.name for x in files]), index=['epoch', 'walltime [h]', 'status'])
+        for f in files:
+            if (results_dir / f.name / 'metrics_epoch.csv').is_file():
+                metrics = pd.read_csv(results_dir / f.name / 'metrics_epoch.csv')
+                df[f.name]['epoch'] = metrics['epoch'].values[-1]
+                df[f.name]['walltime [h]'] = metrics[' wall'].values[-1]/3600
+                if (f / 'finished').is_file():
+                    df[f.name]['status'] = 'done'
+                else:
+                    df[f.name]['status'] = 'training'
+            else:
+                df[f.name]['epoch'] = '...'
+                df[f.name]['walltime'] = '...'
+                if  (f / 'error').is_file():   
+                    df[f.name]['status'] = 'started/error'
+                else:
+                    df[f.name]['status'] = 'submitted'
+    print('TRAINING:')
+    print('Total walltime: {}'.format(config.walltime))
+    print(df)
+
 if args.function == 'MD':
-    check_MD(int(args.cycle))
+    x = input('Restart MD runs that have not yet finished? (y/n): ')
+    if x == 'y':
+        check_MD(int(args.cycle))
 elif args.function == 'log':
     log(int(args.cycle))

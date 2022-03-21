@@ -260,7 +260,7 @@ class QbC:
         axs[2].set_xlabel('Step')
         axs[2].legend()
 
-        plt.savefig('{}/traj_disagreement'.format(self.results_dir),dpi=100)
+        plt.savefig('{}/traj_disagreement'.format(self.results_dir),dpi=100, bbox_inches='tight')
 
 class AdvLoss(Loss):
     def __init__(self, dataset_e, temperature):
