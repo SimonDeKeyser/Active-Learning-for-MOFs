@@ -1,3 +1,4 @@
+from calendar import c
 from pathlib import Path
 import argparse
 import os
@@ -165,8 +166,16 @@ atoms.calc = calculator
 with open(input_dir,'r') as f:
     chunk = list(read(f, index=':'))
 
-calc_data = []
-for state in chunk:
+if Path(output_dir).is_file():  
+    logging.info('This is a restarted run, probably because walltime exceeded...')
+    calc_data = ase.io.read(output_dir, index=':')
+    complete = len(calc_data)
+    logging.info('Restarting calculation, {} already complete'.format(complete))
+else:
+    calc_data = []
+    complete = 0
+
+for state in chunk[complete:]:
     state.calc = None
     atoms.set_positions(state.get_positions())
     atoms.set_cell(state.get_cell())
@@ -176,6 +185,7 @@ for state in chunk:
     calc_data.append(state)
     with open(output_dir, 'w') as f:
         write_extxyz(f, calc_data)
+    logging.info('Energy: {} eV'.format(state.info['energy']))
 
 open('../finished', 'w').close()
 
@@ -198,8 +208,9 @@ if n_total == n_ready:
             '\n\nsource ~/.{}'
             '\npython ../train.py {} {} --cp2k-restart {}'.format(config.walltime, config.cores, config.env, config.cycle, config.walltime, True)
         )
-
-    os.system('module swap cluster/{}; cd {}; bash cycle{}_restart.sh'.format(config.cluster, runs_dir, config.cycle))
+    shell = VSC_shell(ssh_keys.HOST, ssh_keys.USERNAME, ssh_keys.PASSWORD, ssh_keys.KEY_FILENAME)
+    shell.start_sh(config.cluster, runs_dir.resolve(), 'cycle{}_restart.sh'.format(config.cycle))
+    shell.__del__()
 
 else:
     logging.info('Only {} of {} QbC new training data is calculated, waiting...'.format(n_ready, n_total))

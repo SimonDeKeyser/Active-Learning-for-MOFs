@@ -2,6 +2,7 @@ import numpy as np
 import scipy
 import argparse
 from pathlib import Path
+import os
 
 import pandas as pd
 import ase.io
@@ -38,8 +39,8 @@ args = parser.parse_args()
 MD_runs = 5
 MD_steps = 1000
 S_eps = 5e-2
-T = 300
-dt = 1
+T = 600
+dt = 0.5
 
 ##########################################################################################
 
@@ -68,19 +69,26 @@ def strain_cell_sampling(init, S):
     return new
 
 traj_dir = Path.cwd() / 'trajs'
-completed = 0
 if not traj_dir.exists():
     traj_dir.mkdir()
+    indcs = range(MD_runs)
 else:
     logging.info('This is a restarted run, probably because walltime exceeded')
     p = traj_dir.glob('*.traj')
     traj_files = [x for x in p] 
+    indcs = []
+    completed = 0
     for traj_file in traj_files:
         traj = Trajectory(traj_file)
         if len(traj) >= MD_steps/10:
             completed += 1
-
-for i in range(MD_runs-completed):
+        else:
+            indcs.append(int(traj_file.name[:-5]))
+            completed += 1
+    indcs += [x + completed for x in range(MD_runs-completed)]
+    logging.info('Trajs to perform MD: {}'.format(indcs))
+        
+for i in indcs:
     S = make_sym_matrix(np.random.uniform(-S_eps, S_eps, 6))
     atoms = strain_cell_sampling(init, S)
     atoms.set_calculator(calc=calc)
@@ -88,8 +96,8 @@ for i in range(MD_runs-completed):
     MaxwellBoltzmannDistribution(atoms=atoms, temp=T * kB)
     dyn = Langevin(atoms, timestep=dt * fs, friction = 0.002,
             temperature_K = T,
-            trajectory= str(traj_dir / '{}.traj'.format(i+completed)), 
-            logfile= str(traj_dir / '{}.log'.format(i+completed)), loginterval=10
+            trajectory= str(traj_dir / '{}.traj'.format(i)), 
+            logfile= str(traj_dir / '{}.log'.format(i)), loginterval=10
             )
     try:
         dyn.run(MD_steps)

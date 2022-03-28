@@ -192,7 +192,7 @@ class QbC_trainer:
                     '#!/bin/sh'
                     '\n\n#PBS -o output.txt'
                     '\n#PBS -e error.txt'
-                    '\n#PBS -l walltime=03:00:00'
+                    '\n#PBS -l walltime=04:30:00'
                     '\n#PBS -l nodes=1:ppn=12'
                     '\n\nsource ~/.cp2kenv'
                     '\npython ../../../../QbC/md.py {} {} {}'.format(best_model / 'deployed.pth', f, self.n_select)

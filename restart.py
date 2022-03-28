@@ -3,6 +3,7 @@ start_time = perf_counter()
 import os
 import logging
 import argparse
+from time import sleep
 import datetime as dt
 from pathlib import Path
 
@@ -58,9 +59,13 @@ def restart(file, config, walltime = None):
 
     resume(config)
     trainer = TrainerWandB.from_dict(dictionary)
-
-    dataset = dataset_from_config(config, prefix='dataset')
-    logging.info(f"Successfully reload the data set of type {dataset}...")
+    try:
+        dataset = dataset_from_config(config, prefix='dataset')
+        logging.info(f"Successfully reload the data set of type {dataset}...")
+    except:
+        sleep(20)
+        dataset = dataset_from_config(config, prefix='dataset')
+        logging.info(f"Successfully reload the data set of type {dataset}...")
 
     trainer.set_dataset(dataset)
     config.save(file+'/config.yaml','yaml')

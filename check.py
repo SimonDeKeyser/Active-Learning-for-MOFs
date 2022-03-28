@@ -22,6 +22,16 @@ def check_MD(cycle):
             print('{} MD not finished, restarting ...'.format(f.name))
             os.system('module swap cluster/{}; cd {} ;qsub job.sh -d $(pwd)'.format(config.cp2k_cluster, f))
 
+def check_CP2K(cycle):
+    config = Config.from_file(str(Path.cwd() / '../qbc_train' / 'cycle{}'.format(cycle) / 'params.yaml'), 'yaml')
+    md_dir = Path.cwd() / '../qbc_train' / 'cycle{}'.format(cycle) / 'MD'
+    p = md_dir.glob('*')
+    files = [x for x in p]
+    for f in files:
+        if not (f / 'finished').is_file():
+            print('{} CP2K not finished, restarting ...'.format(f.name))
+            os.system('module swap cluster/{}; cd {}/cp2k ;qsub job.sh -d $(pwd)'.format(config.cp2k_cluster, f))
+
 def log(cycle):
     config = Config.from_file(str(Path.cwd() / '../qbc_train' / 'cycle{}'.format(cycle) / 'params.yaml'), 'yaml')
     os.system('module swap cluster/{}; qstat'.format(config.cp2k_cluster))
@@ -70,27 +80,34 @@ def log(cycle):
         df = pd.DataFrame(columns=sorted([x.name for x in files]), index=['epoch', 'walltime [h]', 'status'])
         for f in files:
             if (results_dir / f.name / 'metrics_epoch.csv').is_file():
-                metrics = pd.read_csv(results_dir / f.name / 'metrics_epoch.csv')
-                df[f.name]['epoch'] = metrics['epoch'].values[-1]
-                df[f.name]['walltime [h]'] = metrics[' wall'].values[-1]/3600
-                if (f / 'finished').is_file():
-                    df[f.name]['status'] = 'done'
-                else:
+                if  (f / 'error.txt').is_file():   
                     df[f.name]['status'] = 'training'
-            else:
-                df[f.name]['epoch'] = '...'
-                df[f.name]['walltime'] = '...'
-                if  (f / 'error').is_file():   
-                    df[f.name]['status'] = 'started/error'
+                    metrics = pd.read_csv(results_dir / f.name / 'metrics_epoch.csv')
+                    df[f.name]['epoch'] = metrics['epoch'].values[-1]
+                    df[f.name]['walltime [h]'] = metrics[' wall'].values[-1]/3600
                 else:
                     df[f.name]['status'] = 'submitted'
-    print('TRAINING:')
-    print('Total walltime: {}'.format(config.walltime))
-    print(df)
+                    df[f.name]['epoch'] = '...'
+                    df[f.name]['walltime [h]'] = '...'
+                
+                if (f / 'finished').is_file():
+                    df[f.name]['status'] = 'done'
+          
+        print('TRAINING:')
+        print('Total walltime: {}'.format(config.walltime))
+        print(df)
 
 if args.function == 'MD':
+    print('Make sure that the jobs are not still running with the log command\n')
     x = input('Restart MD runs that have not yet finished? (y/n): ')
     if x == 'y':
         check_MD(int(args.cycle))
+elif args.function == 'CP2K':
+    print('Make sure that the jobs are not still running with the log command\n')
+    x = input('Restart CP2K runs that have not yet finished? (y/n): ')
+    if x == 'y':
+        check_CP2K(int(args.cycle))
 elif args.function == 'log':
     log(int(args.cycle))
+else:
+    print('No valid command')

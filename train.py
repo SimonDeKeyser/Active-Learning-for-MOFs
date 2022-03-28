@@ -55,7 +55,7 @@ walltime_per_model_add = dt.timedelta(minutes=60)
 cores = 12
 cp2k = True
 cp2k_cores = 24
-cp2k_walltime = '04:00:00'
+cp2k_walltime = '04:30:00'
 
 ##########################################################################################
 

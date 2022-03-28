@@ -290,8 +290,8 @@ class Attacker:
     results_dir: str
     n_select: int = 10
     r_max: float = 4.5
-    delta_init: float = 1e-1
-    epsilon: float = 3
+    delta_init: float = 1e-2
+    epsilon: float = 3e-2
     optim_lr: float =1e-2
     temperature: float = 60000
 

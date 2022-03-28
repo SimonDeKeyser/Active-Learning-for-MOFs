@@ -6,9 +6,10 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
+import matplotlib.colors as mcolors
 from cycler import cycler
 plt.style.use('default')
-plt.rcParams['axes.prop_cycle'] = cycler(color= ['#0C5DA5', '#00B945', '#FF9500', '#FF2C00', '#845B97', '#474747', '#9e9e9e'])
+plt.rcParams['axes.prop_cycle'] = cycler(marker= ['o', 'D', 'X']) * cycler(color= ['#0C5DA5', '#00B945', '#FF9500', '#FF2C00', '#845B97', '#474747', '#9e9e9e']) 
 plt.rcParams['figure.figsize'] = [8, 6]
 plt.rcParams['xtick.labelsize'] = 16
 plt.rcParams['ytick.labelsize'] = 16
@@ -50,32 +51,63 @@ class QbC_visualizer:
         self.cycles = [(self.head_dir / name) for name in self.cycle_names]
         self.len_cycles = len(self.cycles)
     
-    def mean_disagreement(self, prop, red=None, combine=False):
-        mean_disagreements = np.zeros(self.len_cycles-1)
-        i = 0
-        for cycle in self.cycles:
-            if cycle.name != 'cycle0':
-                if prop == 'energy':
-                    ylabel = '<$\sigma_{E}$> [meV]'
-                    sigs = np.load(cycle / 'sig_e.npy')
-                if prop == 'forces':
-                    if red == 'mean':
-                        ylabel = '<$\overline{\sigma_{\mathbf{F}}}$> [meV/$\AA$]'
-                        sigs = np.load(cycle / 'sig_f_mean.npy')
-                    if red == 'max':
-                        ylabel = '<$max(\sigma_{\mathbf{F}})$> [meV/$\AA$]'
-                        sigs = np.load(cycle / 'sig_f_max.npy')
-                assert ylabel, 'Give a valid property: [energy, forces] and/or reduction: [mean, max]'
-                mean_disagreements[i] = sigs.mean()
-                i += 1
-
-        if combine:
-            return 1000*mean_disagreements
-        else:
-            plt.plot(np.arange(self.len_cycles-1), 1000*mean_disagreements, '.k')
-            plt.ylabel(ylabel)
+    def mean_disagreement(self, prop, red=None, combine=False, cp2k=False):
+        if cp2k:
+            mean_disagreements = []
+            for cycle in self.cycles:
+                if cycle.name != 'cycle0':
+                    md_dir = cycle / 'MD'
+                    p = md_dir.glob('*')
+                    files = [x for x in p]
+                    mof_dis = []
+                    for f in sorted(files):
+                        sig = np.load(f / 'qbc' / 'sig_f_mean.npy').mean()
+                        mof_dis.append(sig)
+                    mean_disagreements.append(np.array(mof_dis))
+            mean_disagreements = np.array(mean_disagreements)
+            labels = [x.name for x in sorted(files)]
+            fig, ax = plt.subplots()
+            ax.fill_between(np.arange(self.len_cycles-1), 1000*mean_disagreements.min(-1), 1000*mean_disagreements.max(-1), alpha = 0.25, color='red')
+            ax.plot(np.arange(self.len_cycles-1), 1000*mean_disagreements, linestyle = '',label = labels)
+            #ax.plot(np.arange(self.len_cycles-1), 1000*mean_disagreements.mean(-1), marker='o',color='green',label = 'mean')
+            ax.vlines(3.5,1000*mean_disagreements.min(), 1000*mean_disagreements.max(), color='k', linewidth = 4, linestyle = '--', alpha= 0.5)
+            ax.text(3.6, 200, '600 K', color='gray', fontsize=12)
+            ax.text(2.8, 200, '300 K', color='gray', fontsize=12)
+            ax.set_ylabel('<$\overline{\sigma_{\mathbf{F}}}$> [meV/$\AA$]')
+            ax.legend(bbox_to_anchor=(1.04,1), loc="upper left")
+            ax.set_yscale('log')
+            ax.yaxis.set_minor_formatter(mticker.ScalarFormatter())
+            ax.yaxis.set_major_formatter(mticker.ScalarFormatter())
+            ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+            ax.set_xlabel('QbC cycle')
             plt.savefig(self.imgs_dir / 'mean_disagreement', bbox_inches='tight')
             plt.close()
+        else:
+            mean_disagreements = np.zeros(self.len_cycles-1)
+            i = 0
+            for cycle in self.cycles:
+                if cycle.name != 'cycle0':
+                    if prop == 'energy':
+                        ylabel = '<$\sigma_{E}$> [meV]'
+                        sig = np.load(cycle / 'sig_e.npy').mean()
+                    if prop == 'forces':
+                        if red == 'mean':
+                            ylabel = '<$\overline{\sigma_{\mathbf{F}}}$> [meV/$\AA$]'
+                            sig = np.load(cycle / 'sig_f_mean.npy').mean()
+                        if red == 'max':
+                            ylabel = '<$max(\sigma_{\mathbf{F}})$> [meV/$\AA$]'
+                            sig = np.load(cycle / 'sig_f_max.npy').mean()
+                    assert ylabel, 'Give a valid property: [energy, forces] and/or reduction: [mean, max]'
+                    mean_disagreements[i] = sig
+                    i += 1
+
+            if combine:
+                return 1000*mean_disagreements
+            else:
+                plt.plot(np.arange(self.len_cycles-1), 1000*mean_disagreements, '.k')
+                plt.ylabel(ylabel)
+                plt.savefig(self.imgs_dir / 'mean_disagreement', bbox_inches='tight')
+                plt.close()
 
     def best_mae_hour(self, metrics):
         clean_df = metrics[metrics[' wall'] != ' wall']
@@ -92,9 +124,9 @@ class QbC_visualizer:
         wall += list(metrics[' wall'].iloc[cycle_stops[-1]+1:].to_numpy(np.float32) + last_cycle_wall)
         best_mae = []
         time = []
-        for h in np.linspace(0.1,48,400):
+        for h in np.linspace(0.1,100,400):
             if not h > wall[-1]/3600:
-                best_mae.append(clean_df[np.array(wall)/3600 < h][' validation_all_f_mae'].to_numpy(dtype=np.float64).min())
+                best_mae.append(clean_df[np.array(wall)/3600 < h][' validation_all_f_mae'].to_numpy(dtype=np.float64)[-1])
                 time.append(h)
             else:
                 break
@@ -115,7 +147,7 @@ class QbC_visualizer:
         wall += list(metrics[' wall'].iloc[cycle_stops[-1]+1:].to_numpy(np.float32) + last_cycle_wall)
         train_mae = []
         time = []
-        for h in np.linspace(0.1,48,400):
+        for h in np.linspace(0.1,100,400):
             if not h > wall[-1]/3600:
                 train_mae.append(clean_df[np.array(wall)/3600 < h][' training_all_f_mae'].to_numpy(dtype=np.float64)[-1])
                 time.append(h)
@@ -142,7 +174,7 @@ class QbC_visualizer:
             ax.vlines(cycle_stop, 1000*mn, 1000*mx,color='black')
             ax.text(cycle_stop + 0.1, 1000*mn, str(count))
             count += 1
-        ax.set_ylabel('Validation Forces Best MAE [meV/$\AA$]')
+        ax.set_ylabel('Validation Forces MAE [meV/$\AA$]')
         ax.set_xlabel('Training Time [h]')
         ax.set_yscale('log')
         ax.yaxis.set_minor_formatter(mticker.ScalarFormatter())
@@ -284,15 +316,15 @@ if __name__ == "__main__":
     head_dir = Path('../').resolve() / 'qbc_train'
     imgs_dir = 'qbc_imgs' 
     visual = QbC_visualizer(head_dir, imgs_dir)
-    #visual.mean_disagreement('forces','mean')
-    visual.epoch_metrics()
+    visual.mean_disagreement('forces','mean', cp2k=True)
+    visual.epoch_metrics(c=-2)
     #visual.evaluation()
 
     train_folders = ['q4_mean10_md/qbc_train', 'q4_random10_md/qbc_train']
     labels = ['$\overline{\sigma_{\mathbf{F}}}$', 'random']
     #xticks = np.arange(10,120,10)
     #combine_test('evaluation',train_folders, labels, xticks)
-    combine_volume_points(labels)
+    #combine_volume_points(labels)
 
     prop = 'forces'
     red = 'mean'
