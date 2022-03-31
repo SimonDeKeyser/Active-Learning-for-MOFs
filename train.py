@@ -24,7 +24,7 @@ def args_parse():
 '''
 Parameters:
     - head_dir                  Head directory for the QbC environment     
-    - traj_dir                  MD trajectory file location
+    - traj_dir                  MD trajectory or unit cells file location
     - n_select                  The number of new datapoints to select
     - n_val_0                   The number of datapoints in the first validation set
     - n_val_add                 The number of datapoints to add to the validation set each cycle (n_val_add < n_select)
@@ -56,7 +56,8 @@ cores = 12
 cp2k = True
 cp2k_cores = 24
 cp2k_walltime = '04:30:00'
-
+md_walltime = '04:30:00'
+evaluate = True
 ##########################################################################################
 
 args = args_parse()
@@ -85,22 +86,26 @@ Trainer = QbC_trainer(
     cores = cores,              
     cp2k_cores = cp2k_cores,              
     cp2k_walltime = cp2k_walltime,
-    traj_index = traj_index              
+    traj_index = traj_index,
+    md_walltime = md_walltime              
 )
 Trainer.start_time = start_time
 
-if cp2k_restart:
-    Trainer.dataset_from_md()
-    Trainer.restart_training()
-    if not Trainer.send_hpc_run:
-        Trainer.start_next_cyle(md=True)
-
-elif (not cp2k_restart) and cp2k:
-    Trainer.create_trajectories()
-
+if evaluate:
+    Trainer.create_trajectories(eval=True)
 else:
-    Trainer.query()
-    Trainer.dataset_from_traj()
-    Trainer.restart_training()
-    if not Trainer.send_hpc_run:
-        Trainer.start_next_cyle()
+    if cp2k_restart:
+        Trainer.dataset_from_md()
+        Trainer.restart_training()
+        if not Trainer.send_hpc_run:
+            Trainer.start_next_cyle(md=True)
+
+    elif (not cp2k_restart) and cp2k:
+        Trainer.create_trajectories()
+
+    else:
+        Trainer.query()
+        Trainer.dataset_from_traj()
+        Trainer.restart_training()
+        if not Trainer.send_hpc_run:
+            Trainer.start_next_cyle()

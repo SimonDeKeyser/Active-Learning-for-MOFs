@@ -67,9 +67,10 @@ class QbC_trainer:
     env: str = 'torchenv_stress_accelgor'
     cores: int = 12
     cp2k_cores: int = 24
-    cp2k_walltime: str = '01:00:00'
+    cp2k_walltime: str = '04:30:00'
     traj_index: str = ':'
     cp2k_cluster: str = 'doduo'
+    md_walltime = '04:30:00'
 
     def __post_init__(self):
         logging.info('___ QUERY BY COMMITTEE ___\n')
@@ -140,7 +141,7 @@ class QbC_trainer:
         torch.jit.save(model, train_dir / 'deployed.pth', _extra_files=metadata)
 
 
-    def create_trajectories(self):
+    def create_trajectories(self, eval = False):
         config = Config()
         config.cycle = self.cycle
         config.walltime = self.walltime
@@ -176,9 +177,12 @@ class QbC_trainer:
         p = Path(self.traj_dir).glob('**/*.xyz')
         traj_files = [x for x in p]
 
-        md_dir = self.cycle_dir / 'MD'
+        if not eval:
+            md_dir = self.cycle_dir / 'MD'
+        else:
+            md_dir = self.cycle_dir / 'eval'
         if not md_dir.exists():
-            md_dir.mkdir()
+                md_dir.mkdir()
 
         logging.info('\nStarting MD job:')
         shell = VSC_shell(ssh_keys.HOST, ssh_keys.USERNAME, ssh_keys.PASSWORD, ssh_keys.KEY_FILENAME)
@@ -187,18 +191,31 @@ class QbC_trainer:
             job_dir = md_dir / f.name[:-4]
             if not job_dir.exists():
                 job_dir.mkdir()
-            with open(job_dir / 'job.sh' ,'w') as rsh:
-                rsh.write(
-                    '#!/bin/sh'
-                    '\n\n#PBS -o output.txt'
-                    '\n#PBS -e error.txt'
-                    '\n#PBS -l walltime=04:30:00'
-                    '\n#PBS -l nodes=1:ppn=12'
-                    '\n\nsource ~/.cp2kenv'
-                    '\npython ../../../../QbC/md.py {} {} {}'.format(best_model / 'deployed.pth', f, self.n_select)
-                )
-            shell.submit_job(self.cp2k_cluster, job_dir.resolve(), 'job.sh')
-
+            if not eval:
+                with open(job_dir / 'job.sh' ,'w') as rsh:
+                    rsh.write(
+                        '#!/bin/sh'
+                        '\n\n#PBS -o output.txt'
+                        '\n#PBS -e error.txt'
+                        '\n#PBS -l walltime={}'
+                        '\n#PBS -l nodes=1:ppn=12'
+                        '\n\nsource ~/.cp2kenv'
+                        '\npython ../../../../QbC/md.py {} {} {}'.format(self.md_walltime, best_model / 'deployed.pth', f, self.n_select)
+                    )
+                shell.submit_job(self.cp2k_cluster, job_dir.resolve(), 'job.sh')
+            else:
+                for i in range(5):
+                    with open(job_dir / 'job{}.sh'.format(i) ,'w') as rsh:
+                        rsh.write(
+                            '#!/bin/sh'
+                            '\n\n#PBS -o output{}.txt'
+                            '\n#PBS -e error{}.txt'
+                            '\n#PBS -l walltime={}'
+                            '\n#PBS -l nodes=1:ppn=12:gpus=1'
+                            '\n\nsource ~/.torchenv_stress_accelgor'
+                            '\npython ../../../../QbC/md_eval.py {} {} {}'.format(i, i, self.md_walltime, best_model / 'deployed.pth', f, i)
+                        )
+                    shell.submit_job(self.cluster, job_dir.resolve(), 'job{}.sh'.format(i))
         shell.__del__()
 
     def adverserial_attack(self):
