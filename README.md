@@ -5,7 +5,22 @@
 * init.py &emsp;*Initiate the QbC environment by training N models on an initial dataset*
 * train.py &emsp;*Adjust QbC training parameters*
 * md.py &emsp;*Adjust QbC MD parameters*
-* /runs/cycle1.sh &emsp;*Run this bash script from inside the runs folder to start cycle 1*
+
+### Starting the first cycle:
+
+* If cp2k parameter = True in train.py:
+The QbC training will perform MD runs to generate new data, run:
+```
+bash cycle1.sh
+```
+from inside the /runs folder
+
+* If cp2k parameter = False in train.py:
+QbC will be performed on a precalculated MD trajectory (development), run:
+```
+qsub cycle1.sh -d $(pwd)
+```
+from inside the /runs folder
 
 ### Util scripts: (run from inside QbC folder)
 
