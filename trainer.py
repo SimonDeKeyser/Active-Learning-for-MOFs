@@ -213,7 +213,7 @@ class QbC_trainer:
                             '\n#PBS -l walltime={}'
                             '\n#PBS -l nodes=1:ppn=12:gpus=1'
                             '\n\nsource ~/.torchenv_stress_accelgor'
-                            '\npython ../../../../QbC/md_eval.py {} {} {}'.format(i, i, self.md_walltime, best_model / 'deployed.pth', f, i)
+                            '\npython ../../../../QbC/util/md_eval.py {} {} {}'.format(i, i, self.md_walltime, best_model / 'deployed.pth', f, i)
                         )
                     shell.submit_job(self.cluster, job_dir.resolve(), 'job{}.sh'.format(i))
         shell.__del__()

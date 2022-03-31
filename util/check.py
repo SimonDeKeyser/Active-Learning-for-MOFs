@@ -153,7 +153,7 @@ def eval(cycle, **kwargs):
                         '\n#PBS -l walltime={}'
                         '\n#PBS -l nodes=1:ppn={}'
                         '\n\nsource ~/.cp2kenv'
-                        '\npython ../../../../../QbC/cp2k_eval.py {} {} {}'.format(config.cp2k_walltime, config.cp2k_cores, str(traj), str(f / 'eval{}.xyz'.format(traj.name[-5])), config.cp2k_cores)
+                        '\npython ../../../../../QbC/util/cp2k_eval.py {} {} {}'.format(config.cp2k_walltime, config.cp2k_cores, str(traj), str(f / 'eval{}.xyz'.format(traj.name[-5])), config.cp2k_cores)
                     )
                 os.system('module swap cluster/{}; cd {} ;qsub job.sh -d $(pwd)'.format(config.cp2k_cluster, cp2k_dir))
 

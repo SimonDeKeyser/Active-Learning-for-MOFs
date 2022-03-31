@@ -1,5 +1,6 @@
 from os import read
 from pathlib import Path
+import ase.io
 
 from natsort import natsorted
 import numpy as np
@@ -272,7 +273,6 @@ def combine_disagreement(train_folders, labels, prop, red=None):
         if red == 'max':
             ylabel = '<$max(\sigma_{\mathbf{F}})$> [meV/$\AA$]'
 
-    thesis_dir = Path('../../').resolve()
     for i, folder in enumerate(train_folders):
         vis = QbC_visualizer(thesis_dir / folder, imgs_dir)
         disagreement = vis.mean_disagreement(prop, red, combine=True)
@@ -284,7 +284,6 @@ def combine_disagreement(train_folders, labels, prop, red=None):
     plt.close()
 
 def combine_test(eval_dir, train_folders, labels, xticks = None):
-    thesis_dir = Path('../../').resolve()
     for i, folder in enumerate(train_folders):
         vis = QbC_visualizer(thesis_dir / folder, imgs_dir, eval_dir)
         all_f_mae, std = vis.evaluation(combine=True)
@@ -302,7 +301,6 @@ def combine_test(eval_dir, train_folders, labels, xticks = None):
     plt.close()
 
 def combine_volume_points(labels):
-    thesis_dir = Path('../../').resolve()
     for i, folder in enumerate(train_folders):
         vis = QbC_visualizer(thesis_dir / folder, imgs_dir)
         volumes = vis.analyse_datapoints(combine=True)
@@ -313,6 +311,7 @@ def combine_volume_points(labels):
     plt.close()
 
 if __name__ == "__main__":
+    thesis_dir = Path('../../').resolve()
     head_dir = Path('../').resolve() / 'qbc_train'
     imgs_dir = 'qbc_imgs' 
     visual = QbC_visualizer(head_dir, imgs_dir)
