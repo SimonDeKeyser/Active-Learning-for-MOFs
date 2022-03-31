@@ -22,6 +22,6 @@ from inside the /runs folder
 
 ### Util scripts: (run from inside QbC folder)
 
-* python util/check.py `cycle number` log &emsp;*Check how the QbC cycle is doing*
-* python util/check.py `cycle number` MD &emsp;*After checking, restart unfinished MD runs*
-* python util/check.py `cycle number` CP2K &emsp;*After checking, restart unfinished CP2K runs*
+* python util/check.py "cycle number" log &emsp;*Check how the QbC cycle is doing*
+* python util/check.py "cycle number" MD &emsp;*After checking, restart unfinished MD runs*
+* python util/check.py "cycle number" CP2K &emsp;*After checking, restart unfinished CP2K runs*
