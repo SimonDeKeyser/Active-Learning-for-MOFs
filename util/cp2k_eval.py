@@ -2,6 +2,9 @@ from calendar import c
 from pathlib import Path
 import argparse
 import os
+import sys
+p = os.path.abspath('/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/q4_MOFs/QbC')
+sys.path.insert(1,p)
 
 from nequip.utils import Config
 import ase
@@ -165,7 +168,8 @@ calculator = CP2K(
 atoms.calc = calculator
 
 #idcs = np.arange(1500, 20000, 2000)
-idcs = np.arange(1900, 20000, 2000)
+#idcs = np.arange(1900, 20000, 2000)
+idcs = np.arange(1000, 4700, 400)
 logging.info('input: {}'.format(input_dir))
 chunk = [read(input_dir, index=i) for i in idcs]
 

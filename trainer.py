@@ -70,7 +70,7 @@ class QbC_trainer:
     cp2k_walltime: str = '04:30:00'
     traj_index: str = ':'
     cp2k_cluster: str = 'doduo'
-    md_walltime = '04:30:00'
+    md_walltime: str = '04:30:00'
 
     def __post_init__(self):
         logging.info('___ QUERY BY COMMITTEE ___\n')
