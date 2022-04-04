@@ -173,7 +173,7 @@ else:
     calc_data = []
     complete = 0
 
-for state in chunk:
+for state in chunk[complete:]:
     state.calc = None
     atoms.set_positions(state.get_positions())
     atoms.set_cell(state.get_cell())
