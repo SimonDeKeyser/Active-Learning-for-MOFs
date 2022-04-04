@@ -1,5 +1,9 @@
 from pathlib import Path
 import argparse
+import os
+import sys
+p = os.path.abspath('/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/q4_MOFs/QbC')
+sys.path.insert(1,p)
 
 import ase
 from ase.io import read
