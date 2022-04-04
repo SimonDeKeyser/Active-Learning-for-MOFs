@@ -1,26 +1,13 @@
-from calendar import c
 from pathlib import Path
 import argparse
-import os
-import sys
-p = os.path.abspath('/scratch/gent/vo/000/gvo00003/vsc43785/Thesis/q4_MOFs/QbC')
-sys.path.insert(1,p)
 
-from nequip.utils import Config
 import ase
-from ase.io import read, write
+from ase.io import read
 from ase.io.extxyz import write_extxyz
 from cp2k_calculator import CP2K
-#from ase.io.trajectory import Trajectory
 from ase.stress import voigt_6_to_full_3x3_stress
 
-import pandas as pd
 import numpy as np
-from ase.calculators.loggingcalc import LoggingCalculator
-import ssh_keys
-from vsc_shell import VSC_shell
-#from ase.optimize.precon import Exp, PreconLBFGS
-#from ase.constraints import ExpCellFilter
 
 import logging
 logging.basicConfig(format='',level=logging.INFO)
