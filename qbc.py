@@ -36,7 +36,7 @@ plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['mathtext.fontset'] = 'cm'
 import numpy as np
 import ase.io
-from attack_model import wrap_model
+from util.attack_wrapper import wrap_model
 import torch
 from nequip.scripts.deploy import load_deployed_model
 from nequip.data import AtomicData, dataset_from_config, Collater
