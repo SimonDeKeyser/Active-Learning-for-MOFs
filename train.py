@@ -56,14 +56,13 @@ cores = 12
 cp2k = True
 cp2k_cores = 24
 cp2k_walltime = '04:30:00'
-md_walltime = '04:30:00'
-evaluate = True
+md_walltime = '06:00:00'
+evaluate = False
 ##########################################################################################
 
 args = args_parse()
 cycle = int(args.cycle)
-walltime = dt.datetime.strptime(args.walltime, "%H:%M:%S").time()
-walltime = dt.timedelta(hours=walltime.hour, minutes=walltime.minute, seconds=walltime.second)
+
 if args.traj_index is None:
     traj_index = ':'
 else:
@@ -75,7 +74,7 @@ else:
 
 Trainer = QbC_trainer(
     cycle = cycle,
-    walltime = walltime,
+    walltime = args.walltime,
     root = root,
     head_dir = head_dir,
     traj_dir = traj_dir,                                                                                                              

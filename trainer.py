@@ -50,7 +50,7 @@ logging.basicConfig(format='',level=logging.INFO)
 @dataclass
 class QbC_trainer:
     cycle: int
-    walltime: timedelta
+    walltime: str
     root: PosixPath = Path('../../').resolve()
     head_dir: PosixPath = root / 'qbc_train'
     traj_dir: PosixPath = head_dir / 'trajectory.xyz'                                                                                                                             
@@ -71,12 +71,14 @@ class QbC_trainer:
     traj_index: str = ':'
     cp2k_cluster: str = 'doduo'
     md_walltime: str = '04:30:00'
+    MD_steps: int = 200
 
     def __post_init__(self):
         logging.info('___ QUERY BY COMMITTEE ___\n')
         logging.info('\t\t###########')
         logging.info('\t\t# CYCLE {} #'.format(self.cycle))
         logging.info('\t\t###########\n')
+        self.walltime = self.str_to_dt(self.walltime)
 
         self.start_time = None
         assert self.head_dir.exists(), 'Head directory does not exist'
@@ -95,6 +97,12 @@ class QbC_trainer:
         self.dataset_dir = self.cycle_dir / 'data.xyz'
         self.input_dir = self.cycle_dir / 'new_data.xyz'
         self.output_dir = self.cycle_dir / 'calculated_data.xyz'
+    
+    def str_to_dt(self, x):
+        #y = dt.datetime.strptime(x, "%H:%M:%S").time()
+        H, M, S = x.split(':')
+        y = dt.timedelta(hours=int(H), minutes=int(M), seconds=int(S))
+        return y
 
     def deploy(self, train_dir):
         config = Config.from_file(str(train_dir / "config.yaml"))
@@ -140,6 +148,13 @@ class QbC_trainer:
         metadata = {k: v.encode("ascii") for k, v in metadata.items()}
         torch.jit.save(model, train_dir / 'deployed.pth', _extra_files=metadata)
 
+    def period(self, delta):
+        pattern = "{h:02d}:{m:02d}:{s:02d}"
+        d = {}
+        d['h'], rem = divmod(delta.seconds, 3600)
+        d['m'], d['s'] = divmod(rem, 60)
+        d['h'] += delta.days*24
+        return pattern.format(**d)
 
     def create_trajectories(self, eval = False):
         config = Config()
@@ -184,6 +199,36 @@ class QbC_trainer:
         if not md_dir.exists():
                 md_dir.mkdir()
 
+        prev_md_dir = self.head_dir / 'cycle{}'.format(self.cycle-1) / 'MD'
+        if prev_md_dir.is_dir():
+            logging.info('Checking previous fails...')
+            prev_MD_steps = int(np.load(prev_md_dir / 'MD_steps.npy')[0])
+            prev_md_walltime = self.str_to_dt(np.load(prev_md_dir / 'MD_steps.npy')[1])
+            p = prev_md_dir.glob('*')
+            dirs = [x for x in p if x.is_dir()]
+            tot_fails = 0
+            for f in dirs:
+                tot_fails += np.load(f / 'fails.npy')[0]
+            logging.info('Preiously failed runs: {}'.format(tot_fails))
+
+            p = (dirs[0] / 'trajs').glob('*.xyz')
+            MD_runs = len([x for x in p])
+
+            if tot_fails/(MD_runs*len(dirs)) > 0.95:
+                MD_steps = prev_MD_steps//2
+                self.md_walltime = prev_md_walltime//2
+            elif tot_fails/(MD_runs*len(dirs)) < 0.05:
+                MD_steps = prev_MD_steps*2
+                self.md_walltime = prev_md_walltime*2
+            else:
+                MD_steps = prev_MD_steps
+                self.md_walltime = prev_md_walltime
+            logging.info('Amount of MD steps: {}'.format(MD_steps))
+        else:
+            MD_steps = self.MD_steps
+
+        np.save(md_dir / 'MD_steps.npy', np.array([MD_steps, self.period(self.md_walltime)]))
+
         logging.info('\nStarting MD job:')
         shell = VSC_shell(ssh_keys.HOST, ssh_keys.USERNAME, ssh_keys.PASSWORD, ssh_keys.KEY_FILENAME)
         for f in sorted(traj_files):
@@ -200,8 +245,9 @@ class QbC_trainer:
                         '\n#PBS -l walltime={}'
                         '\n#PBS -l nodes=1:ppn=12'
                         '\n\nsource ~/.cp2kenv'
-                        '\npython ../../../../QbC/md.py {} {} {}'.format(self.md_walltime, best_model / 'deployed.pth', f, self.n_select)
+                        '\npython ../../../../QbC/npt.py {} {} {}'.format(self.period(self.md_walltime), best_model / 'deployed.pth', f, self.n_select)
                     )
+                os.system('cp ../plumed.dat {}/plumed.dat'.format(job_dir))
                 shell.submit_job(self.cp2k_cluster, job_dir.resolve(), 'job.sh')
             else:
                 for i in range(5):
@@ -213,7 +259,7 @@ class QbC_trainer:
                             '\n#PBS -l walltime={}'
                             '\n#PBS -l nodes=1:ppn=12:gpus=1'
                             '\n\nsource ~/.torchenv_stress_accelgor'
-                            '\npython ../../../../QbC/util/md_eval.py {} {} {}'.format(i, i, self.md_walltime, best_model / 'deployed.pth', f, i)
+                            '\npython ../../../../QbC/util/md_eval.py {} {} {}'.format(i, i, self.period(self.md_walltime), best_model / 'deployed.pth', f, i)
                         )
                     shell.submit_job(self.cluster, job_dir.resolve(), 'job{}.sh'.format(i))
         shell.__del__()

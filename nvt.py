@@ -1,3 +1,5 @@
+from time import perf_counter
+start_time = perf_counter()
 import numpy as np
 import scipy
 import argparse
@@ -131,6 +133,9 @@ committee.evaluate_committee(save=True)
 new_datapoints = committee.select_data(prop='forces', red='mean', md_len=md_len)
 committee.plot_traj_disagreement()
 ase.io.write(Path.cwd() / 'new_data.xyz', new_datapoints, format='extxyz')
+
+logging.info('WALLTIME: [h]')
+logging.info((perf_counter() - start_time)/3600)
 
 cp2k_dir = Path.cwd() / 'cp2k'
 if not cp2k_dir.exists():

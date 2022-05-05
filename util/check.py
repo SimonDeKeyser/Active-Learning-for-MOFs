@@ -23,7 +23,7 @@ def check_MD(cycle):
     config = Config.from_file(str(Path.cwd() / '../qbc_train' / 'cycle{}'.format(cycle) / 'params.yaml'), 'yaml')
     md_dir = Path.cwd() / '../qbc_train' / 'cycle{}'.format(cycle) / 'MD'
     p = md_dir.glob('*')
-    files = [x for x in p]
+    files = [x for x in p if x.is_dir()]
     for f in files:
         if not (f / 'new_data.xyz').is_file():
             print('{} MD not finished, restarting ...'.format(f.name))
@@ -33,7 +33,7 @@ def check_CP2K(cycle):
     config = Config.from_file(str(Path.cwd() / '../qbc_train' / 'cycle{}'.format(cycle) / 'params.yaml'), 'yaml')
     md_dir = Path.cwd() / '../qbc_train' / 'cycle{}'.format(cycle) / 'MD'
     p = md_dir.glob('*')
-    files = [x for x in p]
+    files = [x for x in p if x.is_dir()]
     for f in files:
         if not (f / 'finished').is_file():
             print('{} CP2K not finished, restarting ...'.format(f.name))
@@ -44,7 +44,7 @@ def log(cycle):
     os.system('module swap cluster/{}; qstat'.format(config.cp2k_cluster))
     md_dir = Path.cwd() / '../qbc_train' / 'cycle{}'.format(cycle) / 'MD'
     p = md_dir.glob('*')
-    files = [x for x in p]
+    files = [x for x in p if x.is_dir()]
     df = pd.DataFrame(index=sorted([x.name for x in files]), columns=['MD', 'CP2K'])
     
     for f in files:
@@ -54,8 +54,12 @@ def log(cycle):
             df['MD'][f.name] = '...'
 
         if (f / 'trajs').is_dir():
-            p = (f / 'trajs').glob('*.traj')
-            current_traj = max([int(x.name[:-5]) for x in p])
+            try:
+                p = (f / 'trajs').glob('*.traj')
+                current_traj = max([int(x.name[:-5]) for x in p])
+            except:
+                p = (f / 'trajs').glob('*.xyz')
+                current_traj = max([int(x.name[:-4]) for x in p])
             df['MD'][f.name] = 'traj {}'.format(current_traj)
         
         if (f / 'qbc').is_dir():

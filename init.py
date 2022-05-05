@@ -30,10 +30,10 @@ Parameters:
 
 root = Path('../').resolve()
 head_dir = root / 'qbc_train'
-len_models = 4
-wandb_project = 'q4_MOFs'
-n_train = 665
-n_val = 70
+len_models = 1
+wandb_project = 'q1'
+n_train = 368
+n_val = 24
 walltime = '04:00:00'
 cluster = 'accelgor'
 env = 'torchenv_stress_accelgor'
